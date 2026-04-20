@@ -1,18 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-char *gets(char *s);
-
-void    run()
-{
-    printf("Good... Wait what");
+void run() {
+    fwrite("Good... Wait what?\n", 1, 19, stderr);
     system("/bin/sh");
 }
 
-int main()
-{
-    char input[76];
-
-    gets(input);
+int main() {
+    char buffer[64];
+    gets(buffer);
     return 0;
 }
