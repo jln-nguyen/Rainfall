@@ -1,0 +1,34 @@
+int main(int argc, char **argv)
+{
+    FILE *fd;
+    char buf[0x42];      // buffer à esp+0x18, taille 66 octets
+    char buf2[0x41];     // juste après buf, à esp+0x5a
+    
+    // Ouvre /home/user/end/.pass en lecture
+    fd = fopen("/home/user/end/.pass", "r");
+    
+    // Zéro-initialise 0x21 * 4 = 132 octets (les deux buffers)
+    memset(buf, 0, 0x84);
+    
+    if (fd == NULL || argc != 2)
+        return -1;
+    
+    // Lit 0x42 (66) octets dans buf
+    fread(buf, 1, 0x42, fd);
+    
+    // buf[atoi(argv[1])] = '\0'
+    buf[atoi(argv[1])] = '\0';
+    
+    // Lit 0x41 (65) octets dans buf2 (juste après buf)
+    fread(buf2, 1, 0x41, fd);
+    
+    fclose(fd);
+    
+    // strcmp(buf, argv[1])
+    if (strcmp(buf, argv[1]) == 0)
+        execl("/bin/sh", "/bin/sh", NULL);  // 🎯 OBJECTIF
+    else
+        puts(buf2);
+    
+    return 0;
+}
