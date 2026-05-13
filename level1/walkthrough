@@ -8,6 +8,43 @@ The goal is to overwrite the saved return address on the stack to redirect execu
 
 ---
 
+## Stack Layout and Key Registers
+
+When a function is called, the CPU pushes context onto the **stack** (a region of memory that grows toward lower addresses) so it can return cleanly.
+
+```
+High addresses
+┌─────────────────┐
+│  ...            │
+├─────────────────┤
+│  saved EIP      │  ← return address: where to resume after ret
+├─────────────────┤
+│  saved EBP      │  ← caller's base frame pointer
+├─────────────────┤
+│  local vars /   │
+│  buffer         │  ← gets() writes here
+├─────────────────┤
+│  ...            │
+Low addresses    (ESP points here)
+```
+
+The three key registers:
+
+| Register | Role |
+|----------|------|
+| **ESP** (Stack Pointer) | Points to the top of the stack (lowest occupied address). Moves on every `push`/`pop` and `sub esp`. |
+| **EBP** (Base Pointer) | Points to the base of the current frame. Used as a stable reference to reach local variables. Saved on function entry, restored on exit. |
+| **EIP** (Instruction Pointer) | Holds the address of the next instruction to execute. Controlling EIP means controlling execution flow — this is the target. |
+
+**How the overflow exploits this:**
+
+1. `gets()` writes into the buffer with no length check.
+2. Writing past the buffer's end overwrites **saved EBP**, then **saved EIP**.
+3. When `ret` executes, the CPU loads saved EIP back into EIP to know where to continue.
+4. By placing `run()`'s address there, the CPU jumps straight into `run()`.
+
+---
+
 ## Recon
 
 **Disassembling `main`** reveals the vulnerability:

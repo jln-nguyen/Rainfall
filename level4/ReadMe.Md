@@ -8,6 +8,62 @@ The goal is to overwrite the global variable at `0x8049810` with `0x1025544` to 
 
 ---
 
+## How the printf vulnerability works
+
+### va_list / va_arg internals
+
+`printf` is declared as:
+
+```c
+int printf(const char *fmt, ...);
+```
+
+The `...` (variadic arguments) are handled at runtime using three macros:
+
+```c
+va_list ap;
+va_start(ap, fmt);   // ap points to the first variadic arg on the stack
+va_arg(ap, type);    // reads the next arg from the stack and advances ap
+va_end(ap);
+```
+
+On x86 (32-bit), all arguments are pushed onto the stack before the call, so `va_arg` is essentially just **reading the next word on the stack and incrementing a pointer**. Printf does this for every format specifier it encounters: `%d` → reads an `int`, `%x` → reads an `unsigned int`, `%s` → reads a `char *`, `%n` → reads an `int *` and **writes** the byte count to it.
+
+### What happens when the user controls the format string
+
+Normal safe call:
+
+```c
+printf("%s", buf);   // fmt is a literal — printf knows to read exactly 1 arg
+```
+
+Vulnerable call (this level):
+
+```c
+printf(buf);         // buf IS the format string — user dictates which specifiers fire
+```
+
+When you send `%x %x %x …`, printf calls `va_arg` for each one. No extra arguments were pushed, so it just **reads successive words from the stack** — leaking whatever is there (return addresses, local variables, your own buffer).
+
+### %n — the write primitive
+
+`%n` tells printf: *"write the number of bytes printed so far into the address returned by `va_arg(ap, int *)`"*.
+
+```
+stack (growing upward, positions relative to printf's frame):
+  [1] → printf's own return address
+  [2] → ...
+  [12] → our input buffer (contains the target address we planted)
+```
+
+By padding output to exactly **N** bytes before `%12$n` fires, we write **N** into `*stack[12]`. We plant the target address at the very start of our input so that `stack[12]` points to `secret` (`0x8049810`).
+
+### Why `%12$n` and not just `%n` twelve times
+
+The `$` syntax is POSIX direct-parameter access: `%12$n` means *"use the 12th variadic argument without consuming the previous 11"*. It lets us write a single clean payload instead of 11 dummy reads.
+
+---
+
 ## Recon
 
 **`main` calls `n()`, which calls `p()` for the format string vuln:**

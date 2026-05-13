@@ -1,37 +1,4 @@
 # Level0
-
-```c
-level0@RainFall:~$ ls -la
-total 737
-dr-xr-x---+ 1 level0 level0     60 Mar  6  2016 .
-dr-x--x--x  1 root   root      340 Sep 23  2015 ..
--rw-r--r--  1 level0 level0    220 Apr  3  2012 .bash_logout
--rw-r--r--  1 level0 level0   3530 Sep 23  2015 .bashrc
--rwsr-x---+ 1 level1 users  747441 Mar  6  2016 level0
--rw-r--r--  1 level0 level0    675 Apr  3  2012 .profile
-```
-
-In this level, there is no '.pass' file.\
-But the binary is setuid.
-We try to execute the binary with different arguments:
-```
-level0@RainFall:~$ ./level0 
-Segmentation fault (core dumped)
-level0@RainFall:~$ ./level0 a
-No !
-level0@RainFall:~$ ./level0 aaaa
-No !
-level0@RainFall:~$ ./level0 .pass
-No !
-level0@RainFall:~$ ./level0 0
-No !
-level0@RainFall:~$ ./level0 1
-No !
-level0@RainFall:~$ ./level0 1 1
-No !
-level0@RainFall:~$ ./level0 1 a
-No !
-```
 Nothing really happens so we take a look with gdb at the binary 'level0'.
 ```
 (gdb) disass main
@@ -69,28 +36,6 @@ We try once again to start the program but with `423` now as argument:
 level0@RainFall:~$ ./level0 423
 $ 
 ```
-We got prompted to a new shell.
-```
-level0@RainFall:~$ ./level0 423
-$ ls -la
-ls: cannot open directory .: Permission denied
-$ pwd
-/home/user/level0
-```
-We don't have the permission to this directory, so our guess is that we are not `level0` anymore. It occurs because of the call of these external function before calling execv:
-```
- 0x08048ef8 <+56>:	call   0x8054680 <getegid>
-   ...
-   ...
-   0x08048f01 <+65>:	call   0x8054670 <geteuid>
-   ...
-   ...
-   0x08048f21 <+97>:	call   0x8054700 <setresgid>
-   ...
-   ...
-   0x08048f3d <+125>:	call   0x8054690 <setresuid>
-```
-Since the binary is setuid it launch a shell with `level1` user:
 ```
 $ whoami
 level1
