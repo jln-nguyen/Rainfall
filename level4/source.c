@@ -1,25 +1,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// Variable globale @ 0x8049810
 int secret = 0;
 
-void p(char *buf) {
-    printf(buf); 
+void p(char *input)
+{
+    printf(input);
 }
 
-void n() {
-    char buf[520];
+void n()
+{
+    char input[520];
 
-    fgets(buf, 512, stdin);
-    p(buf);
+    fgets(input, 512, stdin);
+    p(input);
 
-    if (secret == 16930116) {
+    if (secret == 16930116) 
         system("/bin/cat /home/user/level5/.pass");
-    }
 }
 
-int main() {
+int main()
+{
     n();
     return 0;
 }

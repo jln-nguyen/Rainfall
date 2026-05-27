@@ -1,20 +1,22 @@
-undefined4 main(undefined4 param_1,int param_2)
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
+int main(int argc, char **argv)
 {
-  undefined4 uVar1;
-  undefined1 local_3c [40];
-  int local_14;
-  
-  local_14 = atoi(*(char **)(param_2 + 4));
-  if (local_14 < 10) {
-    memcpy(local_3c,*(void **)(param_2 + 8),local_14 * 4);
-    if (local_14 == 0x574f4c46) {
-      execl("/bin/sh","sh",0);
+    char    copy_buf[40];
+    int     count;
+
+    count = atoi(argv[1]);
+
+    if (count < 10)
+    {
+        memcpy(copy_buf, argv[2], count * 4);
+
+        if (count == 0x574f4c46)
+            execl("/bin/sh", "sh", NULL);
+
+        return 0;
     }
-    uVar1 = 0;
-  }
-  else {
-    uVar1 = 1;
-  }
-  return uVar1;
+    return 1;
 }

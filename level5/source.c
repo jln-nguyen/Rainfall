@@ -9,9 +9,10 @@ void o()
 
 void n()
 {
-    char buf[536];
-    fgets(buf, 536, stdin);
-    printf(buf);
+    char input[536];
+
+    fgets(input, 536, stdin);
+    printf(input);
     exit(1);
 }
 

@@ -1,11 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-char *gets(char *s);
-
-void    run()
+void run()
 {
-    printf("Good... Wait what");
+    printf("Good... Wait what?\n");
     system("/bin/sh");
 }
 

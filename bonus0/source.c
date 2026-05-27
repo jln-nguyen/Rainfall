@@ -1,35 +1,42 @@
-// Buffer de destination dans main : 54 octets
-void main() {
-    char dest[54];
-    pp(dest);
-    puts(dest);
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+
+void p(char *dest, char *prompt)
+{
+    char read_buf[4096];
+
+    puts(prompt);
+    read(0, read_buf, 4096);
+
+    char *newline = strchr(read_buf, '\n');
+    *newline = '\0';
+
+    strncpy(dest, read_buf, 20);
 }
 
-void pp(char *dest) {
+void pp(char *result)
+{
     char input1[20];
     char input2[20];
 
-    p(input1, "prompt");   // lit stdin → strncpy 20 bytes dans input1
-    p(input2, "prompt");   // lit stdin → strncpy 20 bytes dans input2
+    p(input1, " - ");
+    p(input2, " - ");
 
-    strcpy(dest, input1);  // copie input1 dans dest (pas de vérification taille !)
+    strcpy(result, input1);
 
-    int len = strlen(dest);
-    dest[len]     = ' ';   // ajoute un espace après input1
-    dest[len + 1] = '\0';
+    int len = strlen(result);
+    result[len]     = ' ';
+    result[len + 1] = '\0';
 
-    strcat(dest, input2);  // concatène input2 (pas de vérification taille !)
+    strcat(result, input2);
 }
 
-void p(char *dest, char *prompt) {
-    char buffer[4096];     // grand buffer temporaire sur la stack
+int main()
+{
+    char result[54];
 
-    puts(prompt);
-    read(0, buffer, 4096); // lit jusqu'à 4096 octets depuis stdin
-
-    char *newline = strchr(buffer, '\n');
-    *newline = '\0';       // remplace '\n' par '\0'
-
-    strncpy(dest, buffer, 20); // copie seulement 20 octets vers dest
-                               // le reste du buffer RESTE en mémoire !
+    pp(result);
+    puts(result);
+    return 0;
 }

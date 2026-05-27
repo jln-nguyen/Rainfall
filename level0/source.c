@@ -4,24 +4,24 @@
 #include <sys/types.h>
 #include <string.h>
 
-int setresuid(uid_t ruid, uid_t euid, uid_t suid);
-int setresgid(gid_t rgid, gid_t egid, gid_t sgid);
-
-int main(int ac, char **av)
+int main(int argc, char **argv)
 {
-	int nb = atoi(av[1]);
-	char *arg[2]; 
-	if (nb != 423)
-		printf("No !\n");
-	else
-	{
-		gid_t	gid = getegid();
-		uid_t	uid = geteuid();
-		setresgid(gid, gid, gid);
-		setresuid(uid, uid, uid);
-		arg[0] = strdup("/bin/sh");
-		arg[1] = NULL;
-		execv("/bin/sh", arg);
-	}
-	return 0;
+    int     user_input = atoi(argv[1]);
+    char    *shell_args[2];
+
+    if (user_input != 423)
+    {
+        printf("No !\n");
+    }
+    else
+    {
+        gid_t gid = getegid();
+        uid_t uid = geteuid();
+        setresgid(gid, gid, gid);
+        setresuid(uid, uid, uid);
+        shell_args[0] = strdup("/bin/sh");
+        shell_args[1] = NULL;
+        execv("/bin/sh", shell_args);
+    }
+    return 0;
 }

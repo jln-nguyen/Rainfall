@@ -1,42 +1,34 @@
-//Decompile w/ ghidra
+#include <cstring>
+#include <cstdlib>
 
-void main(int param_1,int param_2)
-
+class N
 {
-  N *this;
-  N *this_00;
-  
-  if (param_1 < 2) {
-                    /* WARNING: Subroutine does not return */
-    _exit(1);
-  }
-  this = operator.new(0x6c);
-  N::N(this,5);
-  this_00 = operator.new(0x6c);
-  N::N(this_00,6);
-  N::setAnnotation(this,*(char **)(param_2 + 4));
-  (*(code *)**(undefined4 **)this_00)(this_00,this);
-  return;
-}
+public:
+    char    data[104];
+    int     value;
 
-/* N::setAnnotation(char*) */
+    N(int val) : value(val) {}
 
-void __thiscall N::setAnnotation(N *this,char *param_1)
+    virtual void operator+(N &other) {}
+    virtual void operator-(N &other) {}
 
+    void setAnnotation(char *str)
+    {
+        memcpy(data, str, strlen(str));
+    }
+};
+
+int main(int argc, char **argv)
 {
-  size_t __n;
-  
-  __n = strlen(param_1);
-  memcpy(this + 4,param_1,__n);
-  return;
-}
+    if (argc < 2)
+        _exit(1);
 
-/* N::N(int) */
+    N *obj1 = new N(5);
+    N *obj2 = new N(6);
 
-void __thiscall N::N(N *this,int param_1)
+    obj1->setAnnotation(argv[1]);
 
-{
-  *(undefined ***)this = &PTR_operator+_08048848;
-  *(int *)(this + 0x68) = param_1;
-  return;
+    *obj2 + *obj1;
+
+    return 0;
 }

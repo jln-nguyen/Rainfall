@@ -69,6 +69,14 @@ n() = 0x08048454   ← we want to call this
 
 ## Step 1 : Calculate the offset
 
+```bash
+(gdb) break *0x080484c5      # breakpoint sur le strcpy
+(gdb) run AAAA               # lance le programme
+Une fois arrêté sur le breakpoint :
+(gdb) x/x $esp+0x1c          # adresse de block1 (retour du 1er malloc)
+(gdb) x/x $esp+0x18          # adresse de block2 (retour du 2ème malloc)
+```
+
 ```asm
 malloc(0x40)   ; block1 = 64 bytes
 malloc(0x4)    ; block2 = 4 bytes (function pointer)

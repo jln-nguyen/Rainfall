@@ -2,27 +2,28 @@
 #include <stdlib.h>
 #include <string.h>
 
-void p() {
-    char buffer[76];         // sub $0x68,%esp → 104o alloués, buffer à ebp-0x4c = 76o
-    void *ret_addr;
+void p()
+{
+    char    input[76];
+    void    *ret_addr;
 
     fflush(stdout);
-
-    gets(buffer);            // pas de limite -> overflow
+    gets(input);
 
     ret_addr = __builtin_return_address(0);
 
-    // protection anti-stack : bloque les adresses 0xbf......
-    if (((unsigned int)ret_addr & 0xb0000000) == 0xb0000000) {
+    if (((unsigned int)ret_addr & 0xb0000000) == 0xb0000000)
+    {
         printf("(%p)\n", ret_addr);
         _exit(1);
     }
 
-    puts(buffer);
-    strdup(buffer);          // copie sur le heap → adresse 0x0804xxxx, passe la protection
+    puts(input);
+    strdup(input);
 }
 
-int main() {
+int main()
+{
     p();
     return 0;
 }

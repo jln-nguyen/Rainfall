@@ -1,13 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int m;
+int m = 0;
 
-void    v()
+void v()
 {
-    char buf[536];
-    fgets(buf, 536, stdin);
-    printf(buf);
+    char input[536];
+
+    fgets(input, 536, stdin);
+    printf(input);
     if (m == 64)
     {
         fwrite("Wait what?!\n", sizeof(char), 12, stdout);

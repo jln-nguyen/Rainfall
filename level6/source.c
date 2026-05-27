@@ -2,29 +2,29 @@
 #include <string.h>
 #include <stdio.h>
 
-void n(void)
+void n()
 {
     system("/bin/cat /home/user/level7/.pass");
 }
 
-void m(void)
+void m()
 {
     puts("Nope");
 }
 
 int main(int argc, char **argv)
 {
-    char    *buf;       // esp+0x1c
-    void    (**fptr)(); // esp+0x18
+    char    *heap_buf;
+    void    (**func_ptr)();
 
-    buf  = malloc(0x40);           // malloc(64)
-    fptr = malloc(0x4);            // malloc(4)
+    heap_buf = malloc(64);
+    func_ptr = malloc(4);
 
-    *fptr = m;                     // stocke l'adresse de m() dans le pointeur
+    *func_ptr = m;
 
-    strcpy(buf, argv[1]);          // copie argv[1] dans buf → overflow possible
+    strcpy(heap_buf, argv[1]);
 
-    (*fptr)();                     // appelle la fonction pointée (m par défaut, n si overflow)
+    (*func_ptr)();
 
     return 0;
 }
