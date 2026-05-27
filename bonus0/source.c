@@ -1,3 +1,4 @@
+// Buffer de destination dans main : 54 octets
 void main() {
     char dest[54];
     pp(dest);
