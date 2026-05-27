@@ -10,7 +10,6 @@ void p() {
 
     gets(buffer);            // pas de limite -> overflow
 
-    // récupère la return address depuis la stack
     ret_addr = __builtin_return_address(0);
 
     // protection anti-stack : bloque les adresses 0xbf......

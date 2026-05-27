@@ -1,85 +1,58 @@
-void greetuser(void)
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 
+int lang = 0; // 0x8049988 - variable globale
+
+void greetuser(char *input)
 {
-  char local_4c [4];
-  undefined4 local_48;
-  char local_44 [64];
-  
-  if (language == 1) {
-    builtin_strncpy(local_4c,"Hyvå",4);
-    local_48._0_1_ = -0x5c;
-    local_48._1_1_ = -0x3d;
-    local_48._2_1_ = -0x5c;
-    local_48._3_1_ = ' ';
-    builtin_strncpy(local_44,"päivää ",0xb);
-  }
-  else if (language == 2) {
-    builtin_strncpy(local_4c,"Goed",4);
-    local_48._0_1_ = 'e';
-    local_48._1_1_ = 'm';
-    local_48._2_1_ = 'i';
-    local_48._3_1_ = 'd';
-    builtin_strncpy(local_44,"dag!",4);
-    local_44[4] = ' ';
-    local_44[5] = '\0';
-  }
-  else if (language == 0) {
-    builtin_strncpy(local_4c,"Hell",4);
-    local_48._0_3_ = 0x206f;
-  }
-  strcat(local_4c,&stack0x00000004);
-  puts(local_4c);
-  return;
+    char buffer[72]; // -0x48(%ebp), frame de 0x58
+
+    if (lang == 1)
+    {
+        // 0x8048717 - 19 octets
+        strcpy(buffer, "Hyvää päivää ");
+    }
+    else if (lang == 2)
+    {
+        // 0x804872a - 14 octets
+        strcpy(buffer, "Goedemiddag! ");
+    }
+    else
+    {
+        // 0x8048710 - 7 octets
+        strcpy(buffer, "Hello ");
+    }
+
+    strcat(buffer, input); // VULNERABLE - pas de vérification de taille
+    puts(buffer);
 }
 
-undefined4 main(int param_1,int param_2)
-
+int main(int argc, char **argv)
 {
-  undefined4 uVar1;
-  int iVar2;
-  char *pcVar3;
-  undefined4 *puVar4;
-  byte bVar5;
-  char local_60 [40];
-  char acStack_38 [36];
-  char *local_14;
-  
-  bVar5 = 0;
-  if (param_1 == 3) {
-    pcVar3 = local_60;
-    for (iVar2 = 0x13; iVar2 != 0; iVar2 = iVar2 + -1) {
-      pcVar3[0] = '\0';
-      pcVar3[1] = '\0';
-      pcVar3[2] = '\0';
-      pcVar3[3] = '\0';
-      pcVar3 = pcVar3 + 4;
+    char buf[76];   // esp+0x50, 19 dwords (rep movsl)
+    char *env;
+
+    if (argc != 3)
+        return 1;
+
+    memset(buf, 0, 76);
+
+    strncpy(buf,        argv[1], 40); // 0x28
+    strncpy(buf + 40,   argv[2], 32); // 0x20, offset 0x28
+
+    env = getenv("LANG");
+
+    if (env != NULL)
+    {
+        if (memcmp(env, "fi", 2) == 0)
+            lang = 1;
+        else if (memcmp(env, "nl", 2) == 0)
+            lang = 2;
     }
-    strncpy(local_60,*(char **)(param_2 + 4),0x28);
-    strncpy(acStack_38,*(char **)(param_2 + 8),0x20);
-    local_14 = getenv("LANG");
-    if (local_14 != (char *)0x0) {
-      iVar2 = memcmp(local_14,&DAT_0804873d,2);
-      if (iVar2 == 0) {
-        language = 1;
-      }
-      else {
-        iVar2 = memcmp(local_14,&DAT_08048740,2);
-        if (iVar2 == 0) {
-          language = 2;
-        }
-      }
-    }
-    pcVar3 = local_60;
-    puVar4 = (undefined4 *)&stack0xffffff50;
-    for (iVar2 = 0x13; iVar2 != 0; iVar2 = iVar2 + -1) {
-      *puVar4 = *(undefined4 *)pcVar3;
-      pcVar3 = pcVar3 + ((uint)bVar5 * -2 + 1) * 4;
-      puVar4 = puVar4 + (uint)bVar5 * -2 + 1;
-    }
-    uVar1 = greetuser();
-  }
-  else {
-    uVar1 = 1;
-  }
-  return uVar1;
+
+    // rep movsl : copie buf sur la stack de greetuser via l'argument
+    greetuser(buf);
+
+    return 0;
 }
